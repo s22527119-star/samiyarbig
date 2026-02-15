@@ -1,0 +1,51 @@
+name: macOS GUI via Cloudflare & noVNC
+on: workflow_dispatch
+
+jobs:
+  desktop:
+    runs-on: warp-macos-15-arm64-6x
+    steps:
+      - name: Setup macOS Screen Sharing
+        run: |
+          # تنظیم پسورد برای یوز رانر
+          sudo dscl . -passwd /Users/runner 1234
+          
+          # فعال‌سازی Remote Management (VNC)
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -activate -configure -access -on \
+          -clientopts -setvncpasswd -vncpasswd $(printf "1234" | perl -e 'print pack("H*", "1234")') \
+          -restart -agent -privs -all
+
+      - name: Install Dependencies (noVNC & Cloudflared)
+        run: |
+          brew install cloudflared
+          # نصب websockify برای تبدیل VNC به وب‌سوکت
+          pip3 install websockify
+
+      - name: Start Websockify & noVNC
+        run: |
+          # دانلود کلاینت وب noVNC
+          git clone https://github.com/novnc/noVNC.git
+          
+          # اجرای websockify روی پورت 8081 (متصل به پورت 5900 مک)
+          # استفاده از & برای اجرای در پس‌زمینه
+          nohup python3 -m websockify --web ./noVNC 8081 localhost:5900 &
+          sleep 5
+
+      - name: Start Cloudflare Tunnel
+        run: |
+          # ایجاد یک تونل موقت (Quick Tunnel)
+          echo "Connecting to Cloudflare..."
+          nohup cloudflared tunnel --url http://localhost:8081 > cf.log 2>&1 &
+          sleep 10
+          
+          # استخراج لینک تونل از لاگ‌ها
+          grep -o 'https://[-a-z0-9.]*\.trycloudflare\.com' cf.log | head -n 1
+
+      - name: Keep Runner Alive
+        run: |
+          echo "Cloudflare Tunnel is UP!"
+          echo "Open the link above and click 'Connect'"
+          echo "Password: 1234"
+          sleep 7200
+          
