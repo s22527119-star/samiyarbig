@@ -1,0 +1,42 @@
+name: macOS noVNC Tunnel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: warp-macos-15-arm64-6x
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable VNC Server
+        run: |
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -access -on \
+            -clientopts -setvnclegacy -vnclegacy yes \
+            -clientopts -setvncpw -vncpw 123456 \
+            -restart -agent -privs -all
+
+      - name: Install noVNC
+        run: |
+          brew install novnc websockify
+          mkdir -p ~/novnc
+          cp -r /opt/homebrew/opt/novnc/share/novnc/* ~/novnc/
+
+      - name: Start noVNC (port 6080)
+        run: |
+          cd ~/novnc
+          ./utils/novnc_proxy --vnc localhost:5900 --listen 6080 &
+      
+      - name: Install cloudflared
+        run: |
+          brew install cloudflared
+
+      - name: Start Cloudflare Tunnel (port 6080)
+        run: |
+          cloudflared tunnel --no-autoupdate \
+            --url http://localhost:6080 \
+            run --token ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }} &
+      
+      - name: Keep Runner Alive
+        run: sleep 6h
