@@ -28,7 +28,7 @@ jobs:
       - name: Download Windows 11 ISO
         run: |
           mkdir -p iso
-          wget -O iso/Win11.iso "https://software-download.microsoft.com/db/Win11_English_x64.iso"
+          wget -O iso/Win11.iso "https://archive.org/download/windows-11-24h2-iso_202501/Win11_24H2_English_x64.iso"
 
       - name: Create virtual disk
         run: |
@@ -52,7 +52,7 @@ jobs:
             -vnc :1 &
 
           # اجرای noVNC روی پورت 6080
-          /nix/store/*-novnc-*/bin/novnc_server --vnc localhost:5901 --listen 6080 &
+          /nix/store/*-novnc-*/bin/novnc_server --vnc localhost:5900 --listen 6080 &
 
       - name: Start Cloudflare Tunnel
         run: |
