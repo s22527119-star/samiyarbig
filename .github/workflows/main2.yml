@@ -1,0 +1,60 @@
+name: QEMU KVM Windows 11 with noVNC and Cloudflare Tunnel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows-qemu-novnc:
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31.9.1
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Install QEMU, noVNC, Cloudflared via Nix
+        run: |
+          nix profile install nixpkgs#qemu
+          nix profile install nixpkgs#novnc
+          nix profile install nixpkgs#cloudflared
+
+      - name: Download Windows 11 ISO
+        run: |
+          mkdir -p iso
+          wget -O iso/Win11.iso "https://software-download.microsoft.com/db/Win11_English_x64.iso"
+
+      - name: Create virtual disk
+        run: |
+          qemu-img create -f qcow2 win11.img 50G
+
+      - name: Start Windows 11 VM with noVNC
+        run: |
+          # اجرای VM با VNC روی پورت 5901
+          qemu-system-x86_64 \
+            -m 8192 \
+            -smp 4 \
+            -enable-kvm \
+            -cpu host \
+            -machine type=q35,accel=kvm \
+            -drive file=win11.img,format=qcow2 \
+            -cdrom iso/Win11.iso \
+            -boot d \
+            -vga virtio \
+            -net nic -net user \
+            -usb -device usb-tablet \
+            -vnc :1 &
+
+          # اجرای noVNC روی پورت 6080
+          /nix/store/*-novnc-*/bin/novnc_server --vnc localhost:5901 --listen 6080 &
+
+      - name: Start Cloudflare Tunnel
+        run: |
+          # تنظیم Cloudflare Tunnel (احتیاج به token)
+          cloudflared tunnel --url http://localhost:6080 --no-autoupdate --name win11-tunnel
