@@ -5,7 +5,7 @@ on:
 
 jobs:
   win11-vm:
-    runs-on: ubuntu-silm
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
