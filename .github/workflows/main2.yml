@@ -22,11 +22,6 @@ jobs:
           nix profile install nixpkgs#qemu
           nix profile install nixpkgs#novnc
 
-      - name: Create VNC password file
-        run: |
-          echo "${{ secrets.VNC_PASSWORD }}" | vncpasswd -f > passwd
-          chmod 600 passwd
-
       - name: Download Windows 11 ISO
         run: |
           mkdir -p iso
