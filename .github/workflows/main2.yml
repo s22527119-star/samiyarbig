@@ -28,8 +28,11 @@ jobs:
       - name: Download Windows 11 ISO
         run: |
           mkdir -p iso
-          wget -O iso/Win11.iso "https://www.dl.farsroid.com/windows/Windows-11-2025-25H2-X64(www.farsroid.com).zip"
-
+          wget -O iso/Win11.iso "https://dl3.soft98.ir/win/Windows.11.v26H1.Build.28000.1450.x64.part1.rar?1771256134"
+          mkdir -p iso
+          wget -O iso/Win11.iso "https://dl3.soft98.ir/win/Windows.11.v26H1.Build.28000.1450.x64.part2.rar?1771256134"
+          mkdir -p iso
+          wget -O iso/Win11.iso "https://dl3.soft98.ir/win/Windows.11.v26H1.Build.28000.1450.x64.part3.rar?1771256134"
       - name: Create virtual disk
         run: |
           qemu-img create -f qcow2 win11.img 50G
