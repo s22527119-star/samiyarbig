@@ -25,7 +25,7 @@ jobs:
       - name: Download Windows 11 ISO
         run: |
           mkdir -p iso
-          wget -O iso/Win11.iso "https://dw.softmany.net/aHR0cHM6Ly9hcmNoaXZlLm9yZy9kb3dubG9hZC9XMTF4NjRfMjYyMDAuNjU4NC8yNjIwMC42NTg0LjI1MDkxNS0xOTA1LjI1aDJfZ2VfcmVsZWFzZV9zdmNfcmVmcmVzaF9DTElFTlRfQ09OU1VNRVJfeDY0RlJFX2VuLXVzLmlzbw=="
+          wget -O iso/Win11.iso "https://archive.org/download/mul_windows_7_enterprise_with_sp1_x64_dvd_u_677651-Archive/mul_windows_7_enterprise_jun_2024_x64_custom.iso"
 
       - name: Create disk
         run: |
