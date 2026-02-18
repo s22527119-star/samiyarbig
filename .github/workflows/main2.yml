@@ -5,7 +5,7 @@ on:
 
 jobs:
   win-vm:
-    runs-on: ubuntu-24.04
+    runs-on: macos-15-large
 
     steps:
       - name: Checkout
@@ -33,8 +33,8 @@ jobs:
         run: |
           # مقادیر RAM و KVM به دلیل محدودیت‌های گیت‌هاب اکشنز تغییر کردند
           qemu-system-x86_64 \
-            -m 4096 \
-            -smp 2 \
+            -m 16035 \
+            -smp 3 \
             -machine type=q35 \
             -drive file=win.img,format=qcow2 \
             -cdrom iso/Win.iso \
