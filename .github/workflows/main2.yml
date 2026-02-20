@@ -1,10 +1,10 @@
-name: OS QEMU noVNC Secure
+name: Windows QEMU noVNC Secure
 
 on:
   workflow_dispatch:
 
 jobs:
-  vm-job:
+  win-vm:
     runs-on: ubuntu-22.04
 
     steps:
@@ -15,30 +15,31 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-system-x86 novnc websockify wget
+          # دانلود و نصب Cloudflared برای تانل
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared-linux-amd64.deb
 
-      - name: Download ISO
+      - name: Download Windows ISO
         run: |
           mkdir -p iso
-          # هشدار: این لینک مربوط به macOS Sonoma است و با تنظیمات فعلی بوت نخواهد شد!
-          wget -O iso/os.iso "https://archive.org/download/mul_windows_7_enterprise_with_sp1_x64_dvd_u_677651-Archive/mul_windows_7_enterprise_jun_2024_x64_custom.iso"
+          # نکته: لینکی که قرار دادید مربوط به Windows 7 است نه 11.
+          wget -O iso/Win.iso "https://archive.org/download/macOS-X-images/Sonoma%2014.iso"
 
       - name: Create disk
         run: |
-          qemu-img create -f qcow2 main.img 50G
+          qemu-img create -f qcow2 win.img 50G
 
-      - name: Start VM (Optimized with MTTCG)
+      - name: Start Windows VM
         run: |
-          # استفاده از TCG چند نخی برای نهایت سرعت در غیاب KVM
+          # مقادیر RAM و KVM به دلیل محدودیت‌های گیت‌هاب اکشنز تغییر کردند
           qemu-system-x86_64 \
-            -m 6144 \
+            -m 16035 \
             -smp 4,sockets=1,cores=4,threads=1 \
-            -accel tcg,thread=multi \
-            -cpu max \
             -machine type=q35 \
-            -drive file=main.img,format=qcow2 \
-            -cdrom iso/os.iso \
+            -cpu max \
+            -accel tcg,thread=multi \
+            -drive file=win.img,format=qcow2 \
+            -cdrom iso/Win.iso \
             -boot d \
             -vga virtio \
             -net nic -net user \
@@ -49,6 +50,7 @@ jobs:
 
       - name: Start noVNC (Local)
         run: |
+          # اجرای websockify برای تبدیل VNC به WebSockets
           websockify --web=/usr/share/novnc/ 6080 127.0.0.1:5901 --daemon
 
       - name: Start Cloudflare Web Tunnel
@@ -57,5 +59,6 @@ jobs:
           echo "Starting Cloudflare Tunnel..."
           echo "Please check the logs below for the TryCloudflare URL!"
           echo "=========================================================="
+          # ایجاد یک تانل موقت که ترافیک پورت 6080 را روی اینترنت در دسترس قرار می‌دهد
           cloudflared tunnel --url http://127.0.0.1:6080
           
