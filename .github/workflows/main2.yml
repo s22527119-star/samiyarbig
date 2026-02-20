@@ -41,7 +41,7 @@ jobs:
             -drive file=win.img,format=qcow2 \
             -cdrom iso/Win.iso \
             -boot d \
-            -vga virtio \
+            -vga std \
             -net nic -net user \
             -usb -device usb-tablet \
             -vnc 127.0.0.1:1 \
