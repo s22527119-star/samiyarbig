@@ -22,7 +22,7 @@ jobs:
         run: |
           mkdir -p iso
           # هشدار: این لینک مربوط به macOS Sonoma است و با تنظیمات فعلی بوت نخواهد شد!
-          wget -O iso/os.iso "https://archive.org/download/macOS-X-images/Sonoma%2014.iso"
+          wget -O iso/os.iso "https://archive.org/download/mul_windows_7_enterprise_with_sp1_x64_dvd_u_677651-Archive/mul_windows_7_enterprise_jun_2024_x64_custom.iso"
 
       - name: Create disk
         run: |
