@@ -1,0 +1,64 @@
+name: Windows 7 QEMU noVNC Secure
+
+on:
+  workflow_dispatch:
+
+jobs:
+  win-vm:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install QEMU, noVNC, and Cloudflared
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 novnc websockify wget
+          # دانلود و نصب Cloudflared برای تانل
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+
+      - name: Download Windows 7 ISO
+        run: |
+          mkdir -p iso
+          # استفاده از لینک ویندوز ۷ سفارشی شما
+          wget -O iso/Win.iso "https://archive.org/download/mul_windows_7_enterprise_with_sp1_x64_dvd_u_677651-Archive/mul_windows_7_enterprise_jun_2024_x64_custom.iso"
+
+      - name: Create disk
+        run: |
+          qemu-img create -f qcow2 win.img 50G
+
+      - name: Start Windows VM (Optimized with MTTCG)
+        run: |
+          # تغییر کارت گرافیک به std برای حل مشکل تصویر در ویندوز 7
+          qemu-system-x86_64 \
+            -m 6144 \
+            -smp 4,sockets=1,cores=4,threads=1 \
+            -accel tcg,thread=multi \
+            -cpu max \
+            -machine type=q35 \
+            -drive file=win.img,format=qcow2 \
+            -cdrom iso/Win.iso \
+            -boot d \
+            -vga std \
+            -net nic -net user \
+            -usb -device usb-tablet \
+            -vnc 127.0.0.1:1 \
+            -monitor none \
+            -daemonize
+
+      - name: Start noVNC (Local)
+        run: |
+          # اجرای websockify برای تبدیل VNC به WebSockets
+          websockify --web=/usr/share/novnc/ 6080 127.0.0.1:5901 --daemon
+
+      - name: Start Cloudflare Web Tunnel
+        run: |
+          echo "=========================================================="
+          echo "Starting Cloudflare Tunnel..."
+          echo "Please check the logs below for the TryCloudflare URL!"
+          echo "=========================================================="
+          # ایجاد یک تانل موقت که ترافیک پورت 6080 را روی اینترنت در دسترس قرار می‌دهد
+          cloudflared tunnel --url http://127.0.0.1:6080
+          
