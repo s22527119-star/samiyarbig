@@ -33,11 +33,10 @@ jobs:
         run: |
           # تغییر کارت گرافیک به std برای حل مشکل تصویر در ویندوز 7
           qemu-system-x86_64 \
-            -m 6144 \
+            -m 16035 \
             -smp 4,sockets=1,cores=4,threads=1 \
             -accel tcg,thread=multi \
             -cpu max \
-            -machine type=q35 \
             -drive file=win.img,format=qcow2 \
             -cdrom iso/Win.iso \
             -boot d \
