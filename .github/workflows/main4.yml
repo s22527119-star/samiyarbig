@@ -1,4 +1,4 @@
-name: macOS M4 One-Click Access
+name: macOS Zero-Click Access
 on: workflow_dispatch
 
 jobs:
@@ -22,31 +22,38 @@ jobs:
           python3 -m venv $GITHUB_WORKSPACE/venv
           $GITHUB_WORKSPACE/venv/bin/pip install websockify
 
-      # ۲. تنظیم VNC برای ورود مستقیم و خودکار
-      - name: Enable Zero-Config VNC
+      # ۲. فریب دادن مک: ساخت فایل رمز پایه بدون نیاز به یوزرنیم و غیرفعال کردن قفل صفحه
+      - name: Bypass Apple Security & Disable Lock Screen
         run: |
-          # فعال‌سازی دسترسی ریموت
+          # غیرفعال کردن قفل صفحه و اسکرین‌سیور مک تا از شما رمز نخواهد
+          defaults write com.apple.screensaver askForPassword -int 0
+          sudo defaults write /Library/Preferences/com.apple.screensaver loginWindowIdleTime 0
+          
+          # ساخت فایل هش شده رمز به روش قدیمی که noVNC با آن سازگار است (رمز فیک: password)
+          echo "password" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
+          sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
+          sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
+          sudo chmod 644 /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
+          
+          # استارت کردن سرویس با استفاده از این فایل رمز فیک (بدون یوزرنیم)
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate -configure -access -on \
-            -allowAccessFor -allUsers -privs -all
-          
-          # تنظیم پسورد بسیار ساده (فقط برای پروتکل) و فعال‌سازی حالت بدون یوزرنیم (Legacy)
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw 1
-          
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+            -clientopts -setvnclegacy -vnclegacy yes \
+            -restart -agent -privs -all
+            
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
 
-      # ۳. اجرای تونل و تولید لینک "بدون پسورد"
-      - name: Start Access Tunnel
+      # ۳. اجرای تونل کلودفلر
+      - name: Start Web Access Tunnel
         run: |
           $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc 6080 localhost:5900 > websockify.log 2>&1 &
           
-          echo "------------------------------------------------"
-          echo "🚀 سیستم آماده شد! روی لینک زیر کلیک کنید:"
-          echo "منتظر لینک .trycloudflare.com باشید..."
-          echo "بعد از کپی لینک، این عبارت را به آخرش بچسبانید تا بدون پسورد وارد شوید:"
-          echo "/vnc.html?autoconnect=true&password=1"
-          echo "------------------------------------------------"
+          echo "====================================================================="
+          echo "🚀 سیستم آماده شد!"
+          echo "لینک کلودفلر (trycloudflare.com) را از خطوط پایین کپی کنید."
+          echo "برای ورود **بدون هیچ کادر و رمزی**، این عبارت را دقیقاً به انتهای لینک بچسبانید:"
+          echo "👉 /vnc.html?autoconnect=true&password=password"
+          echo "====================================================================="
           
           cloudflared tunnel --url http://localhost:6080 &
           sleep 15
@@ -63,18 +70,18 @@ jobs:
             echo "path=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
           fi
 
-      # ۵. تنظیمات داکر (فیک) برای لاگین GHCR
+      # ۵. تنظیمات داکر برای GHCR
       - name: Manual Registry Auth
         run: |
           mkdir -p ~/.docker
           AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64)
           echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$AUTH\"}}}" > ~/.docker/config.json
 
-      # ۶. نصب Depot CLI و بیلد
+      # ۶. بیلد Depot
       - name: Install Depot CLI
         run: brew install depot/tap/depot
 
-      - name: Depot Build and Push
+      - name: Depot Build
         run: |
           depot build . \
             --project 2hwk5n6kr1 \
@@ -84,9 +91,7 @@ jobs:
         env:
           DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }} 
 
-      # ۷. زنده نگه داشتن سیستم
+      # ۷. تداوم اجرای سیستم
       - name: Keep Alive
-        run: |
-          echo "✅ محیط مک فعال است. از کار با آن لذت ببرید!"
-          sleep 21600
-          
+        run: sleep 21600
+        
