@@ -14,14 +14,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ۱. نصب پیش‌نیازها (اصلاح شده)
+      # ۱. نصب ابزارهای شبکه (جایگزین روش قبلی برای رفع ارور brew)
       - name: Install Networking Tools
         run: |
-          brew install novnc cloudflared
-          # پیدا کردن مسیر دقیق نصب noVNC برای جلوگیری از ارور مسیر
-          echo "NOVNC_PATH=$(brew --prefix novnc)/libexec/novnc" >> $GITHUB_ENV
+          # نصب کلودفلر
+          brew install cloudflared
+          # نصب websockify از طریق پایتون (چون در brew نیست)
+          pip3 install websockify
+          # دانلود فایل‌های noVNC مستقیماً از گیت‌هاب
+          git clone https://github.com/novnc/noVNC.git /tmp/novnc
 
-      # ۲. فعال‌سازی VNC (روش سازگار با macOS 14)
+      # ۲. فعال‌سازی VNC (تنظیمات مستقیم سیستم)
       - name: Enable Remote Desktop
         run: |
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
@@ -32,14 +35,15 @@ jobs:
           sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
           sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
           
+          # اجرای سرویس Screen Sharing
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
 
       # ۳. اجرای تونل کلودفلر و noVNC
       - name: Start Web Access Tunnel
         run: |
-          # استفاده از مسیر صحیح novnc که در مرحله قبل ذخیره شد
-          # پورت 5900 مک به 6080 وب تبدیل می‌شود
-          websockify --web ${{ env.NOVNC_PATH }} --detach 6080 localhost:5900
+          # اجرای websockify با اشاره به پوشه‌ای که کلون کردیم
+          # پورت ۵۹۰۰ مک را به ۶۰۸۰ برای مرورگر تبدیل می‌کند
+          python3 -m websockify --web /tmp/novnc --detach 6080 localhost:5900
           
           echo "------------------------------------------------"
           echo "LOOK FOR CLOUDFLARE URL BELOW:"
@@ -47,7 +51,7 @@ jobs:
           echo "------------------------------------------------"
           sleep 15
 
-      # ۴. نمایش فایل‌ها برای اطمینان از وجود Dockerfile
+      # ۴. نمایش فایل‌ها برای دیباگ داکرفایل
       - name: Debug Directory
         run: ls -R
 
@@ -69,5 +73,6 @@ jobs:
       - name: Keep Alive
         run: |
           echo "VNC Password: 123456"
+          echo "Connect via the Cloudflare URL above."
           sleep 21600
           
