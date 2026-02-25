@@ -38,9 +38,7 @@ jobs:
           TS_IP=$(tailscale ip -4)
           echo "✅ متصل شد! آی‌پی شما: $TS_IP"
           echo "TS_IP=$TS_IP" >> $GITHUB_ENV
-
-        
-           # ۳. فعال‌سازی VNC اورجینال مک (بدون نیاز به پسورد قدیمی سیستم)
+          
       - name: Setup Native macOS VNC
         run: |
           # فعال‌سازی Remote Management
