@@ -39,28 +39,31 @@ jobs:
           echo "✅ متصل شد! آی‌پی شما: $TS_IP"
           echo "TS_IP=$TS_IP" >> $GITHUB_ENV
 
-      # ۳. فعال‌سازی VNC بدون نیاز به پسورد قدیمی (متد تزریق هش)
+        
+           # ۳. فعال‌سازی VNC اورجینال مک (بدون نیاز به پسورد قدیمی سیستم)
       - name: Setup Native macOS VNC
         run: |
-          # ۱. فعال‌سازی ایجنت مدیریت از راه دور
+          # فعال‌سازی Remote Management
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
 
-          # ۲. ساخت فایل پسورد VNC (پسورد: 123456) بدون نیاز به یوزرنیم سیستم
+          # تنظیم پسورد VNC به صورت مستقیم در فایل پیکربندی (بدون دخالت dscl)
+          # پسورد را '123456' ست می‌کنیم
           echo "123456" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
           sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
           sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
-          sudo chmod 644 /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
           
-          # ۳. پیکربندی دسترسی‌ها برای تمام یوزرها و فعال‌سازی پروتکل قدیمی (Legacy)
+          # تنظیم دسترسی‌ها و فعال‌سازی پروتکل VNC Legacy
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure -access -on \
             -privs -all -allowAccessFor -allUsers \
             -clientopts -setvnclegacy -vnclegacy yes
           
-          # ۴. ریستارت سرویس برای اعمال تغییرات
+          # ریستارت سرویس برای اعمال تغییرات بدون درخواست پسورد قدیمی
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
           
-          echo "✅ سرور VNC با موفقیت روی پروتکل Legacy فعال شد."
+          echo "✅ VNC Server is running on Tailscale IP."
+          echo "✅ Use Password: 123456"
+
 
       # ۴. پیدا کردن Dockerfile
       - name: Find Dockerfile
