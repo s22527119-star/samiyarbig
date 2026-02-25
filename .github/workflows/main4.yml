@@ -1,9 +1,9 @@
-name: macOS Depot Build & Remote VNC
+name: macOS M4 One-Click Access
 on: workflow_dispatch
 
 jobs:
   build:
-    name: "M4 Pro Simulation"
+    name: "M4 Infrastructure Simulation"
     runs-on: macos-14
     permissions:
       contents: read
@@ -22,29 +22,32 @@ jobs:
           python3 -m venv $GITHUB_WORKSPACE/venv
           $GITHUB_WORKSPACE/venv/bin/pip install websockify
 
-      # ۲. تنظیم VNC به صورتی که با نوتیفیکیشن و یوزرنیم مزاحم نشود
-      - name: Enable Remote Desktop
+      # ۲. تنظیم VNC برای ورود مستقیم و خودکار
+      - name: Enable Zero-Config VNC
         run: |
-          # فعال‌سازی دسترسی کامل برای همه یوزرها
+          # فعال‌سازی دسترسی ریموت
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -activate -configure -allowAccessFor -allUsers -privs -all
+            -activate -configure -access -on \
+            -allowAccessFor -allUsers -privs -all
           
-          # فعال‌سازی حالت Legacy VNC (بدون نیاز به یوزرنیم) با یک پسورد ساده
+          # تنظیم پسورد بسیار ساده (فقط برای پروتکل) و فعال‌سازی حالت بدون یوزرنیم (Legacy)
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw 12345678
+            -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw 1
           
-          # ریستارت سرویس برای اعمال تغییرات
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
 
-      # ۳. اجرای تونل و noVNC
-      - name: Start Web Access Tunnel
+      # ۳. اجرای تونل و تولید لینک "بدون پسورد"
+      - name: Start Access Tunnel
         run: |
           $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc 6080 localhost:5900 > websockify.log 2>&1 &
+          
           echo "------------------------------------------------"
-          echo "👇 لینک اختصاصی شما برای ورود بدون پسورد:"
-          echo "منتظر لینک cloudflare باشید و به انتهای آن عبارت زیر را اضافه کنید:"
-          echo "?autoconnect=true&password=12345678"
+          echo "🚀 سیستم آماده شد! روی لینک زیر کلیک کنید:"
+          echo "منتظر لینک .trycloudflare.com باشید..."
+          echo "بعد از کپی لینک، این عبارت را به آخرش بچسبانید تا بدون پسورد وارد شوید:"
+          echo "/vnc.html?autoconnect=true&password=1"
           echo "------------------------------------------------"
+          
           cloudflared tunnel --url http://localhost:6080 &
           sleep 15
 
@@ -60,7 +63,7 @@ jobs:
             echo "path=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
           fi
 
-      # ۵. تنظیمات داکر (فیک)
+      # ۵. تنظیمات داکر (فیک) برای لاگین GHCR
       - name: Manual Registry Auth
         run: |
           mkdir -p ~/.docker
@@ -84,6 +87,6 @@ jobs:
       # ۷. زنده نگه داشتن سیستم
       - name: Keep Alive
         run: |
-          echo "✅ سیستم آماده است."
+          echo "✅ محیط مک فعال است. از کار با آن لذت ببرید!"
           sleep 21600
           
