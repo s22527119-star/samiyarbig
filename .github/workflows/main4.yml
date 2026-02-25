@@ -1,4 +1,4 @@
-name: macOS Zero-Click Access
+name: macOS Depot Build & Tailscale VNC
 on: workflow_dispatch
 
 jobs:
@@ -14,49 +14,51 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ۱. نصب ابزارهای شبکه
-      - name: Install Networking Tools
+      # ۱. نصب Tailscale
+      - name: Install Tailscale
         run: |
-          brew install cloudflared
-          git clone https://github.com/novnc/noVNC.git /tmp/novnc
-          python3 -m venv $GITHUB_WORKSPACE/venv
-          $GITHUB_WORKSPACE/venv/bin/pip install websockify
+          brew install tailscale
+          sudo tailscaled > /tmp/tailscaled.log 2>&1 &
+          sleep 5
 
-      # ۲. فریب دادن مک: ساخت فایل رمز پایه بدون نیاز به یوزرنیم و غیرفعال کردن قفل صفحه
-      - name: Bypass Apple Security & Disable Lock Screen
+      # ۲. دریافت لینک لاگین Tailscale و انتظار برای تایید شما
+      - name: Tailscale Login Link
         run: |
-          # غیرفعال کردن قفل صفحه و اسکرین‌سیور مک تا از شما رمز نخواهد
-          defaults write com.apple.screensaver askForPassword -int 0
-          sudo defaults write /Library/Preferences/com.apple.screensaver loginWindowIdleTime 0
+          # اجرای Tailscale در پس‌زمینه و ذخیره لاگ
+          sudo tailscale up 2>&1 | tee /tmp/ts_up.log &
+          sleep 5
           
-          # ساخت فایل هش شده رمز به روش قدیمی که noVNC با آن سازگار است (رمز فیک: password)
-          echo "password" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
-          sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
-          sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
-          sudo chmod 644 /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
+          echo "======================================================="
+          echo "🔗 لینک اختصاصی لاگین Tailscale شما آماده است:"
+          # استخراج لینک از لاگ
+          TS_LINK=$(grep -o 'https://login.tailscale.com/a/[a-zA-Z0-9]*' /tmp/ts_up.log)
+          echo "👉 $TS_LINK 👈"
+          echo "======================================================="
+          echo "⏳ عملیات متوقف شد... لطفاً لینک بالا را باز کنید و تایید را بزنید."
           
-          # استارت کردن سرویس با استفاده از این فایل رمز فیک (بدون یوزرنیم)
+          # توقف هوشمند تا زمانی که شما لینک را تایید کنید
+          while ! tailscale ip -4 &> /dev/null; do
+            sleep 3
+          done
+          
+          TS_IP=$(tailscale ip -4)
+          echo "✅ دستگاه متصل شد! آی‌پی Tailscale این مک: $TS_IP"
+          echo "TS_IP=$TS_IP" >> $GITHUB_ENV
+
+      # ۳. فعال‌سازی VNC اورجینال مک
+      - name: Setup Native macOS VNC
+        run: |
+          # تنظیم یک رمز ساده برای یوزر پیش‌فرض گیت‌هاب
+          sudo dscl . -passwd /Users/runner 123456
+          
+          # روشن کردن VNC بومی سیستم
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate -configure -access -on \
-            -clientopts -setvnclegacy -vnclegacy yes \
-            -restart -agent -privs -all
+            -allowAccessFor -allUsers -privs -all \
+            -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw 123456 \
+            -restart -agent
             
-          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
-
-      # ۳. اجرای تونل کلودفلر
-      - name: Start Web Access Tunnel
-        run: |
-          $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc 6080 localhost:5900 > websockify.log 2>&1 &
-          
-          echo "====================================================================="
-          echo "🚀 سیستم آماده شد!"
-          echo "لینک کلودفلر (trycloudflare.com) را از خطوط پایین کپی کنید."
-          echo "برای ورود **بدون هیچ کادر و رمزی**، این عبارت را دقیقاً به انتهای لینک بچسبانید:"
-          echo "👉 /vnc.html?autoconnect=true&password=password"
-          echo "====================================================================="
-          
-          cloudflared tunnel --url http://localhost:6080 &
-          sleep 15
+          echo "✅ سرور VNC با رمز 123456 راه‌اندازی شد."
 
       # ۴. پیدا کردن Dockerfile
       - name: Find Dockerfile
@@ -77,7 +79,7 @@ jobs:
           AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64)
           echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$AUTH\"}}}" > ~/.docker/config.json
 
-      # ۶. بیلد Depot
+      # ۶. نصب Depot و بیلد
       - name: Install Depot CLI
         run: brew install depot/tap/depot
 
@@ -91,7 +93,17 @@ jobs:
         env:
           DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }} 
 
-      # ۷. تداوم اجرای سیستم
-      - name: Keep Alive
-        run: sleep 21600
-        
+      # ۷. نمایش اطلاعات نهایی و زنده نگه داشتن سرور
+      - name: Ready to Connect
+        run: |
+          echo "======================================================="
+          echo "🖥 سیستم با موفقیت آماده شد!"
+          echo "برای اتصال:"
+          echo "۱. برنامه VNC Viewer (یا Screen Sharing در مک) را در کامپیوتر خود باز کنید."
+          echo "۲. به این آی‌پی متصل شوید: $TS_IP"
+          echo "۳. اطلاعات ورود:"
+          echo "   👤 یوزرنیم: runner"
+          echo "   🔑 پسورد: 123456"
+          echo "======================================================="
+          sleep 21600
+          
