@@ -1,4 +1,4 @@
-name: macOS Depot Build & Tailscale VNC
+name: macOS M4 One-Click Tailscale VNC
 on: workflow_dispatch
 
 jobs:
@@ -21,44 +21,46 @@ jobs:
           sudo tailscaled > /tmp/tailscaled.log 2>&1 &
           sleep 5
 
-      # ۲. دریافت لینک لاگین Tailscale و انتظار برای تایید شما
+      # ۲. دریافت لینک لاگین Tailscale
       - name: Tailscale Login Link
         run: |
-          # اجرای Tailscale در پس‌زمینه و ذخیره لاگ
           sudo tailscale up 2>&1 | tee /tmp/ts_up.log &
           sleep 5
-          
           echo "======================================================="
-          echo "🔗 لینک اختصاصی لاگین Tailscale شما آماده است:"
-          # استخراج لینک از لاگ
+          echo "🔗 لینک لاگین Tailscale را باز کنید و تایید کنید:"
           TS_LINK=$(grep -o 'https://login.tailscale.com/a/[a-zA-Z0-9]*' /tmp/ts_up.log)
           echo "👉 $TS_LINK 👈"
           echo "======================================================="
-          echo "⏳ عملیات متوقف شد... لطفاً لینک بالا را باز کنید و تایید را بزنید."
           
-          # توقف هوشمند تا زمانی که شما لینک را تایید کنید
-          while ! tailscale ip -4 &> /dev/null; do
-            sleep 3
-          done
+          # انتظار برای اتصال (حداکثر ۵ دقیقه)
+          timeout 300 bash -c 'until tailscale ip -4 &>/dev/null; do sleep 3; done'
           
           TS_IP=$(tailscale ip -4)
-          echo "✅ دستگاه متصل شد! آی‌پی Tailscale این مک: $TS_IP"
+          echo "✅ متصل شد! آی‌پی شما: $TS_IP"
           echo "TS_IP=$TS_IP" >> $GITHUB_ENV
 
-      # ۳. فعال‌سازی VNC اورجینال مک
+      # ۳. فعال‌سازی VNC بدون نیاز به پسورد قدیمی (متد تزریق هش)
       - name: Setup Native macOS VNC
         run: |
-          # تنظیم یک رمز ساده برای یوزر پیش‌فرض گیت‌هاب
-          sudo dscl . -passwd /Users/runner 123456
+          # ۱. فعال‌سازی ایجنت مدیریت از راه دور
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
+
+          # ۲. ساخت فایل پسورد VNC (پسورد: 123456) بدون نیاز به یوزرنیم سیستم
+          echo "123456" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
+          sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
+          sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
+          sudo chmod 644 /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
           
-          # روشن کردن VNC بومی سیستم
+          # ۳. پیکربندی دسترسی‌ها برای تمام یوزرها و فعال‌سازی پروتکل قدیمی (Legacy)
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -activate -configure -access -on \
-            -allowAccessFor -allUsers -privs -all \
-            -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw 123456 \
-            -restart -agent
-            
-          echo "✅ سرور VNC با رمز 123456 راه‌اندازی شد."
+            -configure -access -on \
+            -privs -all -allowAccessFor -allUsers \
+            -clientopts -setvnclegacy -vnclegacy yes
+          
+          # ۴. ریستارت سرویس برای اعمال تغییرات
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+          
+          echo "✅ سرور VNC با موفقیت روی پروتکل Legacy فعال شد."
 
       # ۴. پیدا کردن Dockerfile
       - name: Find Dockerfile
@@ -72,18 +74,18 @@ jobs:
             echo "path=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
           fi
 
-      # ۵. تنظیمات داکر برای GHCR
+      # ۵. تنظیمات داکر (فیک) برای لاگین در GHCR
       - name: Manual Registry Auth
         run: |
           mkdir -p ~/.docker
           AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64)
           echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$AUTH\"}}}" > ~/.docker/config.json
 
-      # ۶. نصب Depot و بیلد
+      # ۶. نصب Depot و بیلد (بدون نیاز به داکر محلی)
       - name: Install Depot CLI
         run: brew install depot/tap/depot
 
-      - name: Depot Build
+      - name: Depot Build and Push
         run: |
           depot build . \
             --project 2hwk5n6kr1 \
@@ -93,17 +95,15 @@ jobs:
         env:
           DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }} 
 
-      # ۷. نمایش اطلاعات نهایی و زنده نگه داشتن سرور
+      # ۷. زنده نگه داشتن سیستم
       - name: Ready to Connect
         run: |
           echo "======================================================="
-          echo "🖥 سیستم با موفقیت آماده شد!"
-          echo "برای اتصال:"
-          echo "۱. برنامه VNC Viewer (یا Screen Sharing در مک) را در کامپیوتر خود باز کنید."
-          echo "۲. به این آی‌پی متصل شوید: $TS_IP"
-          echo "۳. اطلاعات ورود:"
-          echo "   👤 یوزرنیم: runner"
-          echo "   🔑 پسورد: 123456"
+          echo "🖥 سیستم آماده اتصال است!"
+          echo "۱. در کامپیوتر خود نرم‌افزار VNC Viewer را باز کنید."
+          echo "۲. به این آی‌پی وصل شوید: ${{ env.TS_IP }}"
+          echo "۳. در کادر پسورد بنویسید: 123456"
+          echo "⚠️ توجه: اگر کادر یوزرنیم ظاهر شد، آن را خالی بگذارید."
           echo "======================================================="
           sleep 21600
           
