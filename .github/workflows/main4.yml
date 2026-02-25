@@ -14,41 +14,44 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ۱. نصب ابزارهای شبکه (با استفاده از venv برای دور زدن ارور پایتون)
+      # ۱. نصب ابزارهای شبکه (با محیط مجازی پایتون)
       - name: Install Networking Tools
         run: |
           brew install cloudflared
           git clone https://github.com/novnc/noVNC.git /tmp/novnc
-          
-          # ساخت یک محیط مجازی پایتون
           python3 -m venv $GITHUB_WORKSPACE/venv
-          # نصب websockify داخل محیط مجازی
           $GITHUB_WORKSPACE/venv/bin/pip install websockify
 
-      # ۲. فعال‌سازی VNC (تنظیمات مک)
+      # ۲. فعال‌سازی VNC
       - name: Enable Remote Desktop
         run: |
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement ARD_AllLocalUsers -bool true
           
-          # پسورد: 123456
+          # رمز عبور: 123456
           echo "123456" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
           sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
           sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
           
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
 
-      # ۳. اجرای تونل کلودفلر و noVNC (از داخل venv)
+      # ۳. اجرای تونل کلودفلر و noVNC (اصلاح شده)
       - name: Start Web Access Tunnel
         run: |
-          # اجرای websockify از طریق پایتونِ محیط مجازی
-          $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc --detach 6080 localhost:5900
+          # حذف --detach و استفاده از & برای اجرای پس‌زمینه
+          # تمام خروجی‌ها به websockify.log فرستاده می‌شود
+          $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc 6080 localhost:5900 > websockify.log 2>&1 &
           
           echo "------------------------------------------------"
-          echo "👇 لینک ورود به مک را در لاگ‌های زیر پیدا کنید:"
+          echo "👇 لینک ورود به مک را در زیر پیدا کنید:"
+          # اجرای کلودفلر در پس‌زمینه
           cloudflared tunnel --url http://localhost:6080 &
           echo "------------------------------------------------"
+          
+          # صبر برای بالا آمدن سرویس‌ها
           sleep 15
+          # نمایش لاگ websockify برای اطمینان از استارت شدن
+          cat websockify.log
 
       # ۴. نمایش فایل‌ها برای دیباگ داکرفایل
       - name: Debug Directory
@@ -72,5 +75,6 @@ jobs:
       - name: Keep Alive
         run: |
           echo "✅ سیستم آماده است. رمز VNC: 123456"
+          echo "اگر لینک کلودفلر را نمی‌بینید، لاگ مرحله 'Start Web Access Tunnel' را چک کنید."
           sleep 21600
           
