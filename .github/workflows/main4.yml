@@ -3,7 +3,7 @@ on: workflow_dispatch
 
 jobs:
   build:
-    name: "M4 Pro Infrastructure Simulation"
+    name: "M4 Pro Simulation"
     runs-on: macos-14
     permissions:
       contents: read
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ۱. نصب ابزارهای شبکه و VNC
+      # ۱. نصب ابزارهای شبکه (VNC و Tunnel)
       - name: Install Networking Tools
         run: |
           brew install cloudflared
@@ -22,27 +22,30 @@ jobs:
           python3 -m venv $GITHUB_WORKSPACE/venv
           $GITHUB_WORKSPACE/venv/bin/pip install websockify
 
-      # ۲. فعال‌سازی VNC با متد kickstart (حل مشکل پسورد و یوزرنیم)
+      # ۲. فعال‌سازی VNC (بدون نیاز به پسورد قدیمی سیستم)
       - name: Enable Remote Desktop
         run: |
-          # تنظیم پسورد برای یوزر runner (در صورت نیاز به ورود در صفحه لاگین مک)
-          sudo dscl . -passwd /Users/runner password123
+          # فعال‌سازی سرویس Screen Sharing
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
           
-          # فعال‌سازی Remote Management و VNC با پسورد مشخص
-          # پسورد VNC باید دقیقاً با فلگ -vncpasswd تنظیم شود
+          # تنظیم پسورد VNC به صورت مستقیم (password123)
+          # این دستور پسورد اختصاصی VNC را تنظیم می‌کند که نیازی به یوزرنیم ندارد
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate -configure -access -on \
-            -clientopts -setvncpasswd -vncpasswd password123 \
+            -clientopts -setvncprinting -vncprinting yes \
+            -clientopts -setvncpw -vncpw password123 \
             -restart -agent -privs -all
           
-          echo "✅ VNC با رمز 'password123' فعال شد."
+          echo "✅ VNC Legacy Password set to: password123"
 
       # ۳. اجرای تونل کلودفلر و noVNC
       - name: Start Web Access Tunnel
         run: |
+          # اجرای websockify در پس‌زمینه
           $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc 6080 localhost:5900 > websockify.log 2>&1 &
+          
           echo "------------------------------------------------"
-          echo "👇 لینک ورود به محیط مک:"
+          echo "👇 لینک ورود به محیط مک را اینجا پیدا کنید:"
           cloudflared tunnel --url http://localhost:6080 &
           echo "------------------------------------------------"
           sleep 15
@@ -59,7 +62,7 @@ jobs:
             echo "path=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
           fi
 
-      # ۵. تنظیمات داکر (فیک) برای لاگین در GHCR
+      # ۵. تنظیمات داکر برای لاگین در GHCR
       - name: Manual Registry Auth
         run: |
           mkdir -p ~/.docker
@@ -83,9 +86,7 @@ jobs:
       # ۷. زنده نگه داشتن سیستم
       - name: Keep Alive
         run: |
-          echo "✅ سیستم با موفقیت بالا آمد."
-          echo "لینک کلودفلر را باز کنید."
-          echo "در کادر Password عبارت password123 را وارد کنید."
-          echo "اگر صفحه لاگین مک را دیدید: User: runner | Pass: password123"
+          echo "✅ سیستم آماده است."
+          echo "رمز ورود به noVNC: password123"
           sleep 21600
           
