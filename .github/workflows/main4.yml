@@ -21,7 +21,7 @@ jobs:
           sudo tailscaled > /tmp/tailscaled.log 2>&1 &
           sleep 5
 
-      # ۲. دریافت لینک لاگین Tailscale
+      # ۲. دریافت لینک لاگین Tailscale و انتظار هوشمند (نسخه سازگار با مک)
       - name: Tailscale Login Link
         run: |
           sudo tailscale up 2>&1 | tee /tmp/ts_up.log &
@@ -32,36 +32,41 @@ jobs:
           echo "👉 $TS_LINK 👈"
           echo "======================================================="
           
-          # انتظار برای اتصال (حداکثر ۵ دقیقه)
-          timeout 300 bash -c 'until tailscale ip -4 &>/dev/null; do sleep 3; done'
+          # انتظار برای اتصال بدون نیاز به دستور timeout
+          echo "waiting for Tailscale to connect..."
+          for i in {1..100}; do
+            if tailscale ip -4 &>/dev/null; then
+              echo "✅ Connected!"
+              break
+            fi
+            echo "Attempt $i: Still waiting for you to click the link..."
+            sleep 5
+          done
           
           TS_IP=$(tailscale ip -4)
-          echo "✅ متصل شد! آی‌پی شما: $TS_IP"
           echo "TS_IP=$TS_IP" >> $GITHUB_ENV
-          
+
+      # ۳. فعال‌سازی VNC بدون نیاز به پسورد قدیمی
       - name: Setup Native macOS VNC
         run: |
-          # فعال‌سازی Remote Management
+          # فعال‌سازی ایجنت مدیریت
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
 
-          # تنظیم پسورد VNC به صورت مستقیم در فایل پیکربندی (بدون دخالت dscl)
-          # پسورد را '123456' ست می‌کنیم
+          # تزریق مستقیم هش پسورد 123456
           echo "123456" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
           sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
           sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
+          sudo chmod 644 /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
           
-          # تنظیم دسترسی‌ها و فعال‌سازی پروتکل VNC Legacy
+          # تنظیم دسترسی‌ها
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure -access -on \
             -privs -all -allowAccessFor -allUsers \
             -clientopts -setvnclegacy -vnclegacy yes
           
-          # ریستارت سرویس برای اعمال تغییرات بدون درخواست پسورد قدیمی
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
           
-          echo "✅ VNC Server is running on Tailscale IP."
-          echo "✅ Use Password: 123456"
-
+          echo "✅ VNC Server Ready."
 
       # ۴. پیدا کردن Dockerfile
       - name: Find Dockerfile
@@ -75,14 +80,14 @@ jobs:
             echo "path=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
           fi
 
-      # ۵. تنظیمات داکر (فیک) برای لاگین در GHCR
+      # ۵. تنظیمات داکر (فیک)
       - name: Manual Registry Auth
         run: |
           mkdir -p ~/.docker
           AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64)
           echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$AUTH\"}}}" > ~/.docker/config.json
 
-      # ۶. نصب Depot و بیلد (بدون نیاز به داکر محلی)
+      # ۶. نصب Depot و بیلد
       - name: Install Depot CLI
         run: brew install depot/tap/depot
 
@@ -96,15 +101,13 @@ jobs:
         env:
           DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }} 
 
-      # ۷. زنده نگه داشتن سیستم
+      # ۷. نمایش آی‌پی و زنده نگه داشتن
       - name: Ready to Connect
         run: |
           echo "======================================================="
-          echo "🖥 سیستم آماده اتصال است!"
-          echo "۱. در کامپیوتر خود نرم‌افزار VNC Viewer را باز کنید."
-          echo "۲. به این آی‌پی وصل شوید: ${{ env.TS_IP }}"
-          echo "۳. در کادر پسورد بنویسید: 123456"
-          echo "⚠️ توجه: اگر کادر یوزرنیم ظاهر شد، آن را خالی بگذارید."
+          echo "🖥 سیستم آماده است!"
+          echo "IP: ${{ env.TS_IP }}"
+          echo "Password: 123456"
           echo "======================================================="
           sleep 21600
           
