@@ -1,63 +1,75 @@
-name: Depot Build with VNC Access
+name: macOS Depot Build & Remote VNC
 on: workflow_dispatch
 
 jobs:
   build:
+    name: "M4 Pro Infrastructure Simulation"
     runs-on: macos-14
     permissions:
       contents: read
       id-token: write
       packages: write
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # --- بخش مربوط به بیلد Depot ---
-      - name: Install Depot CLI
-        run: brew install depot/tap/depot
+      # ۱. نصب پیش‌نیازهای شبکه و VNC
+      - name: Install Networking Tools
+        run: brew install novnc cloudflared
 
-      - uses: depot/setup-action@v1
-      
-      - name: Depot Build
-        uses: depot/build-push-action@v1
-        with:
-          project: 2hwk5n6kr1
-          context: .
-
-      # --- بخش فیکس شده VNC و دسترسی از راه دور ---
-      - name: Enable Remote Desktop (Fix Kickstart Error)
+      # ۲. فعال‌سازی VNC (رفع ارور kickstart با استفاده از روش جایگزین)
+      - name: Enable Remote Desktop
         run: |
-          # فعال‌سازی Screen Sharing با استفاده از تنظیمات سیستم
+          # فعال‌سازی تنظیمات اشتراک‌گذاری صفحه
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement ARD_AllLocalUsers -bool true
           
-          # تنظیم پسورد VNC به روش مطمئن‌تر (Password: 123456)
+          # تنظیم رمز عبور VNC به "123456" (رمزگذاری شده برای امنیت سیستم)
           echo "123456" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
           sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
           sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
           
-          # شروع سرویس
+          # استارت کردن سرویس
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
 
-      - name: Install Networking Tools (noVNC & Cloudflared)
-        run: brew install novnc cloudflared
-
+      # ۳. اجرای تونل کلودفلر (برای دریافت لینک دسترسی)
       - name: Start Web Access Tunnel
         run: |
-          # اجرای noVNC برای تبدیل VNC به وب
+          # تبدیل پروتکل VNC به وب (noVNC)
           websockify --web /usr/local/share/novnc/ --detach 6080 localhost:5900
           
-          echo "------------------------------------------"
-          echo "LİNK CLOUDFLARE RA DAR LOG ZIR PEYDA KONID:"
+          echo "------------------------------------------------"
+          echo "لینک دسترسی شما در خطوط زیر ایجاد می‌شود:"
           cloudflared tunnel --url http://localhost:6080 &
-          echo "------------------------------------------"
-          
-          # زمان برای بالا آمدن تونل
-          sleep 15
+          echo "------------------------------------------------"
+          sleep 15 # زمان برای پایداری تونل
 
-      - name: Keep Alive
+      # ۴. مرحله دیباگ: لیست کردن فایل‌ها (برای رفع ارور No such file Dockerfile)
+      - name: List Files for Debugging
+        run: |
+          echo "Checking directory structure..."
+          ls -R
+
+      # ۵. راه‌اندازی و اجرای Depot Build
+      - name: Install Depot CLI
+        run: brew install depot/tap/depot
+
+      - name: Setup Depot
+        uses: depot/setup-action@v1
+
+      - name: Depot Build and Push
+        uses: depot/build-push-action@v1
+        with:
+          project: 2hwk5n6kr1
+          # نقطه (.) به معنای پوشه فعلی است. مطمئن شوید Dockerfile همین‌جاست.
+          context: .
+          push: false # اگر می‌خواهید در رجیستری ذخیره شود، روی true بگذارید
+
+      # ۶. زنده نگه داشتن رانر
+      - name: Keep Runner Alive (6 Hours)
         run: |
           echo "VNC Password: 123456"
-          # رانر را برای کار با محیط گرافیکی باز نگه می‌دارد
+          echo "If build failed, check the files in the VNC terminal."
           sleep 21600
           
