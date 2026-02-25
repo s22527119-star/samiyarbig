@@ -14,62 +14,60 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ۱. نصب پیش‌نیازهای شبکه و VNC
+      # ۱. نصب پیش‌نیازها (اصلاح شده)
       - name: Install Networking Tools
-        run: brew install novnc cloudflared
+        run: |
+          brew install novnc cloudflared
+          # پیدا کردن مسیر دقیق نصب noVNC برای جلوگیری از ارور مسیر
+          echo "NOVNC_PATH=$(brew --prefix novnc)/libexec/novnc" >> $GITHUB_ENV
 
-      # ۲. فعال‌سازی VNC (رفع ارور kickstart با استفاده از روش جایگزین)
+      # ۲. فعال‌سازی VNC (روش سازگار با macOS 14)
       - name: Enable Remote Desktop
         run: |
-          # فعال‌سازی تنظیمات اشتراک‌گذاری صفحه
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement ARD_AllLocalUsers -bool true
           
-          # تنظیم رمز عبور VNC به "123456" (رمزگذاری شده برای امنیت سیستم)
+          # تنظیم رمز عبور: 123456
           echo "123456" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
           sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
           sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
           
-          # استارت کردن سرویس
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
 
-      # ۳. اجرای تونل کلودفلر (برای دریافت لینک دسترسی)
+      # ۳. اجرای تونل کلودفلر و noVNC
       - name: Start Web Access Tunnel
         run: |
-          # تبدیل پروتکل VNC به وب (noVNC)
-          websockify --web /usr/local/share/novnc/ --detach 6080 localhost:5900
+          # استفاده از مسیر صحیح novnc که در مرحله قبل ذخیره شد
+          # پورت 5900 مک به 6080 وب تبدیل می‌شود
+          websockify --web ${{ env.NOVNC_PATH }} --detach 6080 localhost:5900
           
           echo "------------------------------------------------"
-          echo "لینک دسترسی شما در خطوط زیر ایجاد می‌شود:"
+          echo "LOOK FOR CLOUDFLARE URL BELOW:"
           cloudflared tunnel --url http://localhost:6080 &
           echo "------------------------------------------------"
-          sleep 15 # زمان برای پایداری تونل
+          sleep 15
 
-      # ۴. مرحله دیباگ: لیست کردن فایل‌ها (برای رفع ارور No such file Dockerfile)
-      - name: List Files for Debugging
-        run: |
-          echo "Checking directory structure..."
-          ls -R
+      # ۴. نمایش فایل‌ها برای اطمینان از وجود Dockerfile
+      - name: Debug Directory
+        run: ls -R
 
-      # ۵. راه‌اندازی و اجرای Depot Build
+      # ۵. اجرای Depot
       - name: Install Depot CLI
         run: brew install depot/tap/depot
 
       - name: Setup Depot
         uses: depot/setup-action@v1
 
-      - name: Depot Build and Push
+      - name: Depot Build
         uses: depot/build-push-action@v1
         with:
           project: 2hwk5n6kr1
-          # نقطه (.) به معنای پوشه فعلی است. مطمئن شوید Dockerfile همین‌جاست.
           context: .
-          push: false # اگر می‌خواهید در رجیستری ذخیره شود، روی true بگذارید
+          push: false
 
-      # ۶. زنده نگه داشتن رانر
-      - name: Keep Runner Alive (6 Hours)
+      # ۶. زنده نگه داشتن سیستم
+      - name: Keep Alive
         run: |
           echo "VNC Password: 123456"
-          echo "If build failed, check the files in the VNC terminal."
           sleep 21600
           
