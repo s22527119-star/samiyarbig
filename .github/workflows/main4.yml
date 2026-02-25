@@ -1,0 +1,51 @@
+name: macOS Depot with VNC Access
+on: workflow_dispatch
+
+jobs:
+  macos-vnc:
+    name: "M2/M4 Runner with VNC & Depot"
+    # برای استفاده از رانر رایگان اپل سیلیکون گیت‌هاب
+    runs-on: macos-14-xlarge
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Depot CLI
+        run: |
+          brew install depot/tap/depot
+          depot --version
+
+      - name: Setup macOS Screen Sharing (VNC)
+        run: |
+          # فعال‌سازی سرویس اشتراک‌گذاری صفحه
+          sudo /usr/libexec/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -privs -all
+          # تنظیم رمز عبور VNC (رمز: 123456)
+          sudo /usr/libexec/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncprinting -vncprinting yes
+          sudo /usr/libexec/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw 123456
+
+      - name: Install noVNC and Cloudflared
+        run: |
+          brew install novnc cloudflared
+
+      - name: Launch noVNC & Cloudflare Tunnel
+        run: |
+          # تبدیل پروتکل VNC به WebSocket برای مرورگر (پورت 6080)
+          websockify --web /usr/local/share/novnc/ --detach 6080 localhost:5900
+          
+          # ایجاد تونل کلودفلر برای دسترسی عمومی بدون نیاز به پورت فوروارد
+          echo "------------------------------------------"
+          echo "LOOK FOR THE CLOUDFLARE URL IN THE LOGS"
+          echo "------------------------------------------"
+          cloudflared tunnel --url http://localhost:6080 & 
+          
+          # انتظار برای ایجاد لینک تونل
+          sleep 15
+
+      - name: Session Active (Keep Alive)
+        run: |
+          echo "VNC Password: 123456"
+          echo "The runner will stay active for 6 hours or until you cancel it."
+          # نگه داشتن رانر به مدت 6 ساعت
+          sleep 21600
+          
