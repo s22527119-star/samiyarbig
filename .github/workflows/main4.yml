@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ۱. نصب ابزارهای شبکه (VNC و Tunnel)
+      # ۱. نصب ابزارهای شبکه
       - name: Install Networking Tools
         run: |
           brew install cloudflared
@@ -22,35 +22,33 @@ jobs:
           python3 -m venv $GITHUB_WORKSPACE/venv
           $GITHUB_WORKSPACE/venv/bin/pip install websockify
 
-      # ۲. فعال‌سازی VNC (بدون نیاز به پسورد قدیمی سیستم)
+      # ۲. تنظیم VNC به صورتی که با نوتیفیکیشن و یوزرنیم مزاحم نشود
       - name: Enable Remote Desktop
         run: |
-          # فعال‌سازی سرویس Screen Sharing
-          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
-          
-          # تنظیم پسورد VNC به صورت مستقیم (password123)
-          # این دستور پسورد اختصاصی VNC را تنظیم می‌کند که نیازی به یوزرنیم ندارد
+          # فعال‌سازی دسترسی کامل برای همه یوزرها
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -activate -configure -access -on \
-            -clientopts -setvncprinting -vncprinting yes \
-            -clientopts -setvncpw -vncpw password123 \
-            -restart -agent -privs -all
+            -activate -configure -allowAccessFor -allUsers -privs -all
           
-          echo "✅ VNC Legacy Password set to: password123"
+          # فعال‌سازی حالت Legacy VNC (بدون نیاز به یوزرنیم) با یک پسورد ساده
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw 12345678
+          
+          # ریستارت سرویس برای اعمال تغییرات
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
 
-      # ۳. اجرای تونل کلودفلر و noVNC
+      # ۳. اجرای تونل و noVNC
       - name: Start Web Access Tunnel
         run: |
-          # اجرای websockify در پس‌زمینه
           $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc 6080 localhost:5900 > websockify.log 2>&1 &
-          
           echo "------------------------------------------------"
-          echo "👇 لینک ورود به محیط مک را اینجا پیدا کنید:"
+          echo "👇 لینک اختصاصی شما برای ورود بدون پسورد:"
+          echo "منتظر لینک cloudflare باشید و به انتهای آن عبارت زیر را اضافه کنید:"
+          echo "?autoconnect=true&password=12345678"
+          echo "------------------------------------------------"
           cloudflared tunnel --url http://localhost:6080 &
-          echo "------------------------------------------------"
           sleep 15
 
-      # ۴. پیدا کردن هوشمند Dockerfile
+      # ۴. پیدا کردن Dockerfile
       - name: Find Dockerfile
         id: find-dockerfile
         run: |
@@ -62,7 +60,7 @@ jobs:
             echo "path=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
           fi
 
-      # ۵. تنظیمات داکر برای لاگین در GHCR
+      # ۵. تنظیمات داکر (فیک)
       - name: Manual Registry Auth
         run: |
           mkdir -p ~/.docker
@@ -87,6 +85,5 @@ jobs:
       - name: Keep Alive
         run: |
           echo "✅ سیستم آماده است."
-          echo "رمز ورود به noVNC: password123"
           sleep 21600
           
