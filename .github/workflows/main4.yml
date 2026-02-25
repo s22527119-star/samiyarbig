@@ -22,22 +22,27 @@ jobs:
           python3 -m venv $GITHUB_WORKSPACE/venv
           $GITHUB_WORKSPACE/venv/bin/pip install websockify
 
-      # ۲. فعال‌سازی VNC
+      # ۲. فعال‌سازی VNC با متد kickstart (حل مشکل پسورد و یوزرنیم)
       - name: Enable Remote Desktop
         run: |
-          sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
-          sudo defaults write /Library/Preferences/com.apple.RemoteManagement ARD_AllLocalUsers -bool true
-          echo "123456" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
-          sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
-          sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
-          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
+          # تنظیم پسورد برای یوزر runner (در صورت نیاز به ورود در صفحه لاگین مک)
+          sudo dscl . -passwd /Users/runner password123
+          
+          # فعال‌سازی Remote Management و VNC با پسورد مشخص
+          # پسورد VNC باید دقیقاً با فلگ -vncpasswd تنظیم شود
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -access -on \
+            -clientopts -setvncpasswd -vncpasswd password123 \
+            -restart -agent -privs -all
+          
+          echo "✅ VNC با رمز 'password123' فعال شد."
 
       # ۳. اجرای تونل کلودفلر و noVNC
       - name: Start Web Access Tunnel
         run: |
           $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc 6080 localhost:5900 > websockify.log 2>&1 &
           echo "------------------------------------------------"
-          echo "👇 LOOK FOR CLOUDFLARE URL BELOW:"
+          echo "👇 لینک ورود به محیط مک:"
           cloudflared tunnel --url http://localhost:6080 &
           echo "------------------------------------------------"
           sleep 15
@@ -54,37 +59,33 @@ jobs:
             echo "path=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
           fi
 
-      # ۵. شبیه‌سازی تنظیمات داکر برای لاگین در GHCR (بدون نیاز به نصب داکر)
+      # ۵. تنظیمات داکر (فیک) برای لاگین در GHCR
       - name: Manual Registry Auth
         run: |
-          # ساخت فولدر تنظیمات داکر
           mkdir -p ~/.docker
-          # ایجاد توکن Base64 برای لاگین
           AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64)
-          # ساخت فایل config.json که Depot از آن استفاده می‌کند
           echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$AUTH\"}}}" > ~/.docker/config.json
-          echo "✅ Fake Docker config created for GHCR."
 
-      # ۶. نصب Depot CLI و بیلد نهایی
+      # ۶. نصب Depot CLI و بیلد
       - name: Install Depot CLI
         run: brew install depot/tap/depot
 
       - name: Depot Build and Push
         run: |
-          # حالا Depot به صورت خودکار فایل config.json را می‌خواند
           depot build . \
             --project 2hwk5n6kr1 \
             --file ${{ steps.find-dockerfile.outputs.path }} \
             --push \
             --tag ghcr.io/${{ github.repository_owner }}/m4-sim-image:latest
         env:
-          # برای احراز هویت با پروژه Depot (الزامی)
           DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }} 
 
       # ۷. زنده نگه داشتن سیستم
       - name: Keep Alive
         run: |
-          echo "✅ BUILD FINISHED!"
-          echo "VNC Password: 123456"
+          echo "✅ سیستم با موفقیت بالا آمد."
+          echo "لینک کلودفلر را باز کنید."
+          echo "در کادر Password عبارت password123 را وارد کنید."
+          echo "اگر صفحه لاگین مک را دیدید: User: runner | Pass: password123"
           sleep 21600
           
