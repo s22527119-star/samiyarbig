@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ۱. نصب ابزارهای شبکه و VNC (با متد venv)
+      # ۱. نصب ابزارهای شبکه و VNC
       - name: Install Networking Tools
         run: |
           brew install cloudflared
@@ -37,7 +37,7 @@ jobs:
         run: |
           $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc 6080 localhost:5900 > websockify.log 2>&1 &
           echo "------------------------------------------------"
-          echo "👇 لینک ورود به مک (VNC):"
+          echo "👇 LOOK FOR CLOUDFLARE URL BELOW:"
           cloudflared tunnel --url http://localhost:6080 &
           echo "------------------------------------------------"
           sleep 15
@@ -49,34 +49,42 @@ jobs:
           DOCKERFILE_PATH=$(find . -name "Dockerfile" -o -name "dockerfile" | head -n 1)
           if [ -z "$DOCKERFILE_PATH" ]; then
             echo "FROM alpine" > Dockerfile
-            echo "RUN echo 'Hello from M4 Simulation'" >> Dockerfile
             echo "path=./Dockerfile" >> $GITHUB_OUTPUT
           else
             echo "path=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
           fi
 
-      # ۵. نصب Depot CLI و بیلد (بدون نیاز به دستور docker)
+      # ۵. شبیه‌سازی تنظیمات داکر برای لاگین در GHCR (بدون نیاز به نصب داکر)
+      - name: Manual Registry Auth
+        run: |
+          # ساخت فولدر تنظیمات داکر
+          mkdir -p ~/.docker
+          # ایجاد توکن Base64 برای لاگین
+          AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64)
+          # ساخت فایل config.json که Depot از آن استفاده می‌کند
+          echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$AUTH\"}}}" > ~/.docker/config.json
+          echo "✅ Fake Docker config created for GHCR."
+
+      # ۶. نصب Depot CLI و بیلد نهایی
       - name: Install Depot CLI
         run: brew install depot/tap/depot
 
       - name: Depot Build and Push
         run: |
-          # استفاده از دستور مستقیم CLI به جای Action برای دور زدن وابستگی به داکر محلی
+          # حالا Depot به صورت خودکار فایل config.json را می‌خواند
           depot build . \
             --project 2hwk5n6kr1 \
             --file ${{ steps.find-dockerfile.outputs.path }} \
             --push \
-            --tag ghcr.io/${{ github.repository_owner }}/m4-sim-image:latest \
-            --registry-username ${{ github.actor }} \
-            --registry-password ${{ secrets.GITHUB_TOKEN }}
+            --tag ghcr.io/${{ github.repository_owner }}/m4-sim-image:latest
         env:
-          # اگر توکن دپو دارید اینجا بگذارید، در غیر این صورت از OIDC استفاده می‌کند
+          # برای احراز هویت با پروژه Depot (الزامی)
           DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }} 
 
-      # ۶. زنده نگه داشتن سیستم
+      # ۷. زنده نگه داشتن سیستم
       - name: Keep Alive
         run: |
-          echo "✅ بیلد با موفقیت توسط سرورهای راه دور Depot انجام شد."
-          echo "رمز VNC شما: 123456"
+          echo "✅ BUILD FINISHED!"
+          echo "VNC Password: 123456"
           sleep 21600
           
