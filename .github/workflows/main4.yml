@@ -1,51 +1,63 @@
-name: macOS Depot with VNC Access
+name: Depot Build with VNC Access
 on: workflow_dispatch
 
 jobs:
-  macos-vnc:
-    name: "M2/M4 Runner with VNC & Depot"
-    # برای استفاده از رانر رایگان اپل سیلیکون گیت‌هاب
+  build:
     runs-on: macos-14
-    
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # --- بخش مربوط به بیلد Depot ---
       - name: Install Depot CLI
-        run: |
-          brew install depot/tap/depot
-          depot --version
+        run: brew install depot/tap/depot
 
-      - name: Setup macOS Screen Sharing (VNC)
-        run: |
-          # فعال‌سازی سرویس اشتراک‌گذاری صفحه
-          sudo /usr/libexec/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -privs -all
-          # تنظیم رمز عبور VNC (رمز: 123456)
-          sudo /usr/libexec/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncprinting -vncprinting yes
-          sudo /usr/libexec/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw 123456
+      - uses: depot/setup-action@v1
+      
+      - name: Depot Build
+        uses: depot/build-push-action@v1
+        with:
+          project: 2hwk5n6kr1
+          context: .
 
-      - name: Install noVNC and Cloudflared
+      # --- بخش فیکس شده VNC و دسترسی از راه دور ---
+      - name: Enable Remote Desktop (Fix Kickstart Error)
         run: |
-          brew install novnc cloudflared
+          # فعال‌سازی Screen Sharing با استفاده از تنظیمات سیستم
+          sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
+          sudo defaults write /Library/Preferences/com.apple.RemoteManagement ARD_AllLocalUsers -bool true
+          
+          # تنظیم پسورد VNC به روش مطمئن‌تر (Password: 123456)
+          echo "123456" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
+          sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
+          sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
+          
+          # شروع سرویس
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
 
-      - name: Launch noVNC & Cloudflare Tunnel
+      - name: Install Networking Tools (noVNC & Cloudflared)
+        run: brew install novnc cloudflared
+
+      - name: Start Web Access Tunnel
         run: |
-          # تبدیل پروتکل VNC به WebSocket برای مرورگر (پورت 6080)
+          # اجرای noVNC برای تبدیل VNC به وب
           websockify --web /usr/local/share/novnc/ --detach 6080 localhost:5900
           
-          # ایجاد تونل کلودفلر برای دسترسی عمومی بدون نیاز به پورت فوروارد
           echo "------------------------------------------"
-          echo "LOOK FOR THE CLOUDFLARE URL IN THE LOGS"
+          echo "LİNK CLOUDFLARE RA DAR LOG ZIR PEYDA KONID:"
+          cloudflared tunnel --url http://localhost:6080 &
           echo "------------------------------------------"
-          cloudflared tunnel --url http://localhost:6080 & 
           
-          # انتظار برای ایجاد لینک تونل
+          # زمان برای بالا آمدن تونل
           sleep 15
 
-      - name: Session Active (Keep Alive)
+      - name: Keep Alive
         run: |
           echo "VNC Password: 123456"
-          echo "The runner will stay active for 6 hours or until you cancel it."
-          # نگه داشتن رانر به مدت 6 ساعت
+          # رانر را برای کار با محیط گرافیکی باز نگه می‌دارد
           sleep 21600
           
