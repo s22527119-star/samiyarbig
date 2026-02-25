@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ۱. نصب ابزارهای شبکه (VNC)
+      # ۱. نصب ابزارهای شبکه (VNC) - متد venv تضمینی
       - name: Install Networking Tools
         run: |
           brew install cloudflared
@@ -37,49 +37,56 @@ jobs:
         run: |
           $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc 6080 localhost:5900 > websockify.log 2>&1 &
           echo "------------------------------------------------"
-          echo "👇 لینک ورود به مک:"
+          echo "👇 لینک ورود به مک (VNC):"
           cloudflared tunnel --url http://localhost:6080 &
           echo "------------------------------------------------"
           sleep 15
 
-      # ۴. پیدا کردن هوشمند Dockerfile (برای رفع ارور No such file)
+      # ۴. پیدا کردن هوشمند Dockerfile
       - name: Find Dockerfile
         id: find-dockerfile
         run: |
-          # جستجو برای پیدا کردن فایل داکرفایل در تمام زیرپوشه‌ها
           DOCKERFILE_PATH=$(find . -name "Dockerfile" -o -name "dockerfile" | head -n 1)
-          
           if [ -z "$DOCKERFILE_PATH" ]; then
-            echo "❌ هیچ داکرفایلی پیدا نشد! یک داکرفایل موقت ساخته می‌شود..."
+            echo "❌ No Dockerfile found! Creating a placeholder..."
             echo "FROM alpine" > Dockerfile
             echo "RUN echo 'Hello from M4 Simulation'" >> Dockerfile
             echo "path=./Dockerfile" >> $GITHUB_OUTPUT
           else
-            echo "✅ داکرفایل پیدا شد در: $DOCKERFILE_PATH"
+            echo "✅ Found Dockerfile at: $DOCKERFILE_PATH"
             echo "path=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
           fi
 
-      # ۵. اجرای بیلد Depot (با رفع هشدار و ارور)
+      # ۵. ورود به GitHub Container Registry (برای رفع ارور خروجی)
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ۶. اجرای بیلد Depot و Push به جای Load
       - name: Install Depot CLI
         run: brew install depot/tap/depot
 
       - name: Setup Depot
         uses: depot/setup-action@v1
 
-      - name: Depot Build
+      - name: Depot Build & Push
         uses: depot/build-push-action@v1
         with:
           project: 2hwk5n6kr1
-          # استفاده از مسیری که مرحله قبلی پیدا کرد
           file: ${{ steps.find-dockerfile.outputs.path }}
           context: .
-          # رفع هشدار با استفاده از load یا push
-          load: true 
+          # تغییر کلیدی: به جای load از push استفاده می‌کنیم تا به Docker رانر نیاز نباشد
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/m4-sim-image:latest
 
-      # ۶. زنده نگه داشتن سیستم
+      # ۷. زنده نگه داشتن سیستم
       - name: Keep Alive
         run: |
-          echo "✅ بیلد انجام شد یا محیط آماده دیباگ است."
+          echo "✅ بیلد با موفقیت انجام و به GHCR فرستاده شد."
+          echo "حالا می‌توانید از طریق VNC محیط را بررسی کنید."
           echo "رمز VNC: 123456"
           sleep 21600
           
