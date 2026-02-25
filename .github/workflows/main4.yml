@@ -5,7 +5,7 @@ jobs:
   macos-vnc:
     name: "M2/M4 Runner with VNC & Depot"
     # برای استفاده از رانر رایگان اپل سیلیکون گیت‌هاب
-    runs-on: macos-14-xlarge
+    runs-on: macos-14
     
     steps:
       - name: Checkout Code
