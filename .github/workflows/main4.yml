@@ -4,7 +4,7 @@ on: workflow_dispatch
 jobs:
   build:
     name: "M4 Infrastructure Simulation"
-    runs-on: macos-14
+    runs-on: macos-latest
     permissions:
       contents: read
       id-token: write
