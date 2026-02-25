@@ -14,39 +14,38 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ۱. نصب ابزارهای شبکه (جایگزین روش قبلی برای رفع ارور brew)
+      # ۱. نصب ابزارهای شبکه (با استفاده از venv برای دور زدن ارور پایتون)
       - name: Install Networking Tools
         run: |
-          # نصب کلودفلر
           brew install cloudflared
-          # نصب websockify از طریق پایتون (چون در brew نیست)
-          pip3 install websockify
-          # دانلود فایل‌های noVNC مستقیماً از گیت‌هاب
           git clone https://github.com/novnc/noVNC.git /tmp/novnc
+          
+          # ساخت یک محیط مجازی پایتون
+          python3 -m venv $GITHUB_WORKSPACE/venv
+          # نصب websockify داخل محیط مجازی
+          $GITHUB_WORKSPACE/venv/bin/pip install websockify
 
-      # ۲. فعال‌سازی VNC (تنظیمات مستقیم سیستم)
+      # ۲. فعال‌سازی VNC (تنظیمات مک)
       - name: Enable Remote Desktop
         run: |
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement ARD_AllLocalUsers -bool true
           
-          # تنظیم رمز عبور: 123456
+          # پسورد: 123456
           echo "123456" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
           sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
           sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
           
-          # اجرای سرویس Screen Sharing
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
 
-      # ۳. اجرای تونل کلودفلر و noVNC
+      # ۳. اجرای تونل کلودفلر و noVNC (از داخل venv)
       - name: Start Web Access Tunnel
         run: |
-          # اجرای websockify با اشاره به پوشه‌ای که کلون کردیم
-          # پورت ۵۹۰۰ مک را به ۶۰۸۰ برای مرورگر تبدیل می‌کند
-          python3 -m websockify --web /tmp/novnc --detach 6080 localhost:5900
+          # اجرای websockify از طریق پایتونِ محیط مجازی
+          $GITHUB_WORKSPACE/venv/bin/python3 -m websockify --web /tmp/novnc --detach 6080 localhost:5900
           
           echo "------------------------------------------------"
-          echo "LOOK FOR CLOUDFLARE URL BELOW:"
+          echo "👇 لینک ورود به مک را در لاگ‌های زیر پیدا کنید:"
           cloudflared tunnel --url http://localhost:6080 &
           echo "------------------------------------------------"
           sleep 15
@@ -55,7 +54,7 @@ jobs:
       - name: Debug Directory
         run: ls -R
 
-      # ۵. اجرای Depot
+      # ۵. اجرای بیلد Depot
       - name: Install Depot CLI
         run: brew install depot/tap/depot
 
@@ -72,7 +71,6 @@ jobs:
       # ۶. زنده نگه داشتن سیستم
       - name: Keep Alive
         run: |
-          echo "VNC Password: 123456"
-          echo "Connect via the Cloudflare URL above."
+          echo "✅ سیستم آماده است. رمز VNC: 123456"
           sleep 21600
           
