@@ -1,10 +1,10 @@
-name: macOS M4 One-Click Tailscale VNC
+name: macOS M4 Native Tailscale VNC
 on: workflow_dispatch
 
 jobs:
   build:
     name: "M4 Infrastructure Simulation"
-    runs-on: macos-latest
+    runs-on: macos-14
     permissions:
       contents: read
       id-token: write
@@ -21,7 +21,7 @@ jobs:
           sudo tailscaled > /tmp/tailscaled.log 2>&1 &
           sleep 5
 
-      # ۲. دریافت لینک لاگین Tailscale و انتظار هوشمند (نسخه سازگار با مک)
+      # ۲. دریافت لینک لاگین Tailscale و انتظار
       - name: Tailscale Login Link
         run: |
           sudo tailscale up 2>&1 | tee /tmp/ts_up.log &
@@ -32,35 +32,41 @@ jobs:
           echo "👉 $TS_LINK 👈"
           echo "======================================================="
           
-          # انتظار برای اتصال بدون نیاز به دستور timeout
-          echo "waiting for Tailscale to connect..."
+          echo "در حال انتظار برای تایید شما..."
           for i in {1..100}; do
             if tailscale ip -4 &>/dev/null; then
-              echo "✅ Connected!"
+              echo "✅ دستگاه متصل شد!"
               break
             fi
-            echo "Attempt $i: Still waiting for you to click the link..."
             sleep 5
           done
           
           TS_IP=$(tailscale ip -4)
           echo "TS_IP=$TS_IP" >> $GITHUB_ENV
 
-      # ۳. فعال‌سازی VNC بدون نیاز به پسورد قدیمی
+      # ۳. فعال‌سازی VNC بومی مک با ساخت یوزر جدید (حل مشکل پروتکل و پسورد)
       - name: Setup Native macOS VNC
         run: |
-          # فعال‌سازی ایجنت مدیریت
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
+          # ساخت یک یوزر ادمین جدید در مک
+          sudo sysadminctl -addUser macuser -fullName "Mac User" -password "123456" -admin
           
-          # تنظیم دسترسی‌ها
+          # اضافه کردن یوزر جدید به گروه دسترسی تصویر
+          sudo dseditgroup -o edit -a macuser -t user com.apple.access_screensharing || true
+          
+          # روشن کردن سرویس استاندارد اسکرین شیرینگ مک
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
+          
+          # فعال‌سازی مدیریت ریموت فقط برای یوزر جدید (بدون ترفندهای مخرب)
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -configure -access -on \
-            -privs -all -allowAccessFor -allUsers \
-            -clientopts -setvnclegacy -vnclegacy yes
+            -activate -configure -access -on \
+            -users macuser -privs -all \
+            -restart -agent
+            
+          # جلوگیری از خاموش شدن صفحه نمایش مک
+          sudo defaults write /Library/Preferences/com.apple.screensaver loginWindowIdleTime 0
+          caffeinate -d &
           
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
-          
-          echo "✅ VNC Server Ready."
+          echo "✅ سرور اورجینال مک راه‌اندازی شد."
 
       # ۴. پیدا کردن Dockerfile
       - name: Find Dockerfile
@@ -74,7 +80,7 @@ jobs:
             echo "path=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
           fi
 
-      # ۵. تنظیمات داکر (فیک)
+      # ۵. تنظیمات داکر برای GHCR
       - name: Manual Registry Auth
         run: |
           mkdir -p ~/.docker
@@ -85,7 +91,7 @@ jobs:
       - name: Install Depot CLI
         run: brew install depot/tap/depot
 
-      - name: Depot Build and Push
+      - name: Depot Build
         run: |
           depot build . \
             --project 2hwk5n6kr1 \
@@ -95,13 +101,14 @@ jobs:
         env:
           DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }} 
 
-      # ۷. نمایش آی‌پی و زنده نگه داشتن
+      # ۷. نمایش اطلاعات نهایی
       - name: Ready to Connect
         run: |
           echo "======================================================="
-          echo "🖥 سیستم آماده است!"
-          echo "IP: ${{ env.TS_IP }}"
-          echo "Password: 123456"
+          echo "🖥 سیستم با موفقیت آماده شد!"
+          echo "آی‌پی اتصال: ${{ env.TS_IP }}"
+          echo "👤 یوزرنیم: macuser"
+          echo "🔑 پسورد: 123456"
           echo "======================================================="
           sleep 21600
           
