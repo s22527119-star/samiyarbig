@@ -1,4 +1,4 @@
-name: macOS M4 Native Tailscale VNC
+name: macOS M4 Native Tailscale VNC (GUI Fix)
 on: workflow_dispatch
 
 jobs:
@@ -44,29 +44,30 @@ jobs:
           TS_IP=$(tailscale ip -4)
           echo "TS_IP=$TS_IP" >> $GITHUB_ENV
 
-      # ۳. فعال‌سازی VNC بومی مک با ساخت یوزر جدید (حل مشکل پروتکل و پسورد)
-      - name: Setup Native macOS VNC
+      # ۳. فعال‌سازی VNC روی یوزر اصلی (برای نمایش کامل GUI)
+      - name: Setup Native macOS VNC (GUI Fix)
         run: |
-          # ساخت یک یوزر ادمین جدید در مک
-          sudo sysadminctl -addUser macuser -fullName "Mac User" -password "123456" -admin
-          
-          # اضافه کردن یوزر جدید به گروه دسترسی تصویر
-          sudo dseditgroup -o edit -a macuser -t user com.apple.access_screensharing || true
-          
-          # روشن کردن سرویس استاندارد اسکرین شیرینگ مک
-          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
-          
-          # فعال‌سازی مدیریت ریموت فقط برای یوزر جدید (بدون ترفندهای مخرب)
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -activate -configure -access -on \
-            -users macuser -privs -all \
-            -restart -agent
-            
-          # جلوگیری از خاموش شدن صفحه نمایش مک
-          sudo defaults write /Library/Preferences/com.apple.screensaver loginWindowIdleTime 0
+          # جلوگیری از خوابیدن یا قفل شدن صفحه نمایش (برای جلوگیری از سیاه شدن VNC)
+          sudo pmset displaysleep 0
+          sudo pmset sleep 0
+          defaults write com.apple.screensaver askForPassword -int 0
           caffeinate -d &
           
-          echo "✅ سرور اورجینال مک راه‌اندازی شد."
+          # تزریق مستقیم فایل پسورد VNC (رمز: 123456)
+          echo "123456" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; chomp(my $p = <STDIN>); print pack "C*", map { $p =~ s/(.)//s ? ord($1) ^ shift(@k) : shift(@k) } 0..15' > /tmp/.vncpasswd
+          sudo mkdir -p /Library/Application\ Support/Apple/Remote\ Desktop/
+          sudo cp /tmp/.vncpasswd /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
+          sudo chmod 644 /Library/Application\ Support/Apple/Remote\ Desktop/VNCConfig.passwd
+          
+          # فعال‌سازی دسترسی VNC برای یوزر runner (صاحبِ محیط گرافیکی) با پروتکل استاندارد
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -access -on \
+            -users runner -privs -all \
+            -clientopts -setvnclegacy -vnclegacy yes
+            
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+          
+          echo "✅ سرور گرافیکی VNC برای یوزر اصلی راه‌اندازی شد."
 
       # ۴. پیدا کردن Dockerfile
       - name: Find Dockerfile
@@ -107,8 +108,9 @@ jobs:
           echo "======================================================="
           echo "🖥 سیستم با موفقیت آماده شد!"
           echo "آی‌پی اتصال: ${{ env.TS_IP }}"
-          echo "👤 یوزرنیم: macuser"
+          echo "👤 یوزرنیم (در صورت نیاز): runner"
           echo "🔑 پسورد: 123456"
+          echo "⚠️ برای جلوگیری از ارور پروتکل و دیدن محیط دسکتاپ حتماً از نرم‌افزار TigerVNC استفاده کنید."
           echo "======================================================="
           sleep 21600
           
