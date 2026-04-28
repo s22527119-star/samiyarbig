@@ -67,12 +67,3 @@ jobs:
           
           # یا اگر نیاز به پروکسی دارید:
           # docker run --rm --network container:wireguard curlimages/curl:latest http://internal-api.local
-
-      - name: Cleanup
-        if: always()
-        run: |
-          echo "Stopping VPN..."
-          docker stop wireguard || true
-          docker rm wireguard || true
-          rm -rf /tmp/wg-config
-          echo "Cleanup completed"
