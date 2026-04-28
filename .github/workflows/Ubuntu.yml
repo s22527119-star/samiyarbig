@@ -17,16 +17,13 @@ jobs:
         env:
           WG_CONFIG: ${{ secrets.WIREGUARD_CONFIG }}
         run: |
-          # ایجاد دایرکتوری برای کانفیگ
           mkdir -p /tmp/wg-config
           echo "$WG_CONFIG" > /tmp/wg-config/wg0.conf
           chmod 600 /tmp/wg-config/wg0.conf
-          
-          echo "WireGuard config created successfully"
+          echo "WireGuard config created"
 
       - name: Start WireGuard Container
         run: |
-          # اجرای کانتینر WireGuard
           docker run -d \
             --name=wireguard \
             --cap-add=NET_ADMIN \
@@ -38,32 +35,22 @@ jobs:
             linuxserver/wireguard:latest
           
           echo "Waiting for WireGuard to connect..."
-          sleep 10
+          sleep 15
           
-          # بررسی وضعیت کانتینر
-          docker logs wireguard
-
-      - name: Test Connection
-        run: |
-          echo "=== Checking Docker container ==="
-          docker ps | grep wireguard
-          
-          echo "=== WireGuard Status ==="
+          echo "=== Connection Status ==="
           docker exec wireguard wg show
-          
-          echo "=== Test VPN Connection ==="
-          docker exec wireguard curl -s --max-time 10 ifconfig.me || echo "Using internal network"
-          
-          # تست دسترسی به شبکه داخلی
-          # docker exec wireguard ping -c 3 10.0.0.1
 
-      - name: Run Your Tasks via VPN
+      - name: Your Task 1
         run: |
-          # مثال: دسترسی به سرویس داخلی
-          echo "Accessing internal service through VPN..."
-          
-          # از طریق کانتینر دستورات را اجرا کنید
-          docker exec wireguard curl -s http://your-internal-service.local || true
-          
-          # یا اگر نیاز به پروکسی دارید:
-          # docker run --rm --network container:wireguard curlimages/curl:latest http://internal-api.local
+          echo "VPN is running..."
+          docker exec wireguard curl -s ifconfig.me
+
+      - name: Your Task 2
+        run: |
+          echo "VPN still running..."
+          docker exec wireguard ping -c 3 8.8.8.8
+
+      - name: Your Task 3
+        run: |
+          echo "VPN still active!"
+          # هر کاری که نیاز دارید انجام بدید
