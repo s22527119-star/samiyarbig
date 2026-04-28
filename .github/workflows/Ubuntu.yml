@@ -1,0 +1,55 @@
+name: Connect via WireGuard VPN
+
+on:
+  workflow_dispatch:  # اجرای دستی
+  push:               # یا هر تریگر دلخواه
+    branches: [ main ]
+
+jobs:
+  wireguard-connect:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install WireGuard
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wireguard-tools openresolv
+
+      - name: Setup WireGuard Config
+        env:
+          WG_CONFIG: ${{ secrets.WIREGUARD_CONFIG }}
+        run: |
+          # ایجاد فایل کانفیگ از Secret
+          echo "$WG_CONFIG" | sudo tee /etc/wireguard/wg0.conf > /dev/null
+          sudo chmod 600 /etc/wireguard/wg0.conf
+
+      - name: Bring up WireGuard Interface
+        run: |
+          # فعال‌سازی اینترفیس
+          sudo wg-quick up wg0
+          
+          # نمایش وضعیت اتصال
+          echo "=== WireGuard Status ==="
+          sudo wg show
+          
+          # بررسی اتصال (اختیاری - پینگ یک آیپی داخلی)
+          # ping -c 3 10.0.0.1
+
+      - name: Use VPN Connection
+        run: |
+          # اینجا کارهایی که با VPN نیاز دارید را انجام دهید
+          echo "VPN is connected. Your public IP via VPN:"
+          curl -s --interface wg0 ifconfig.me || echo "Check your routing"
+          
+          # مثال: دسترسی به یک سرویس داخلی
+          # curl http://internal-service.local
+
+      - name: Bring down WireGuard Interface
+        if: always()  # همیشه اجرا شود حتی اگر مراحل قبل fail شوند
+        run: |
+          echo "Disconnecting VPN..."
+          sudo wg-quick down wg0 || true
+          echo "VPN disconnected"
