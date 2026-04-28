@@ -6,90 +6,73 @@ on:
     branches: [ main ]
 
 jobs:
-  wireguard-connect:
+  wireguard-vpn:
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install WireGuard Tools and wireguard-go
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wireguard-tools resolvconf
-          
-          # نصب wireguard-go (userspace implementation)
-          wget https://github.com/amnezia-vpn/amneziawg-go/releases/download/v0.2.12/amneziawg-go-linux-amd64.tar.gz
-          tar -xzf amneziawg-go-linux-amd64.tar.gz
-          sudo mv amneziawg-go /usr/local/bin/
-          sudo chmod +x /usr/local/bin/amneziawg-go
-          
-          # یا استفاده از wireguard-go اصلی
-          # sudo apt-get install -y golang-go
-          # git clone https://git.zx2c4.com/wireguard-go
-          # cd wireguard-go && make && sudo mv wireguard-go /usr/local/bin/
-
-      - name: Setup WireGuard Config
+      - name: Create WireGuard Config
         env:
           WG_CONFIG: ${{ secrets.WIREGUARD_CONFIG }}
         run: |
-          # ذخیره کانفیگ
-          echo "$WG_CONFIG" | sudo tee /etc/wireguard/wg0.conf > /dev/null
-          sudo chmod 600 /etc/wireguard/wg0.conf
+          # ایجاد دایرکتوری برای کانفیگ
+          mkdir -p /tmp/wg-config
+          echo "$WG_CONFIG" > /tmp/wg-config/wg0.conf
+          chmod 600 /tmp/wg-config/wg0.conf
           
-          # نمایش کانفیگ (بدون کلید خصوصی)
-          sudo cat /etc/wireguard/wg0.conf | grep -v PrivateKey
+          echo "WireGuard config created successfully"
 
-      - name: Start wireguard-go in background
+      - name: Start WireGuard Container
         run: |
-          # ایجاد اینترفیس tun
-          export WG_TUN_NAME=wg0
-          sudo ip tuntap add dev $WG_TUN_NAME mode tun || true
+          # اجرای کانتینر WireGuard
+          docker run -d \
+            --name=wireguard \
+            --cap-add=NET_ADMIN \
+            --cap-add=SYS_MODULE \
+            -e PUID=1000 \
+            -e PGID=1000 \
+            -v /tmp/wg-config:/config \
+            --sysctl="net.ipv4.conf.all.src_valid_mark=1" \
+            linuxserver/wireguard:latest
           
-          # اجرای wireguard-go در بکگراند
-          export LOG_LEVEL=debug
-          sudo -E wireguard-go $WG_TUN_NAME &
-          sleep 2
+          echo "Waiting for WireGuard to connect..."
+          sleep 10
           
-          # تنظیم آدرس IP
-          sudo ip addr add 10.0.0.2/24 dev $WG_TUN_NAME || true
-          
-          # بالا آوردن اینترفیس
-          sudo ip link set up dev $WG_TUN_NAME
-          
-          # اعمال کانفیگ
-          sudo wg setconf $WG_TUN_NAME /etc/wireguard/wg0.conf
+          # بررسی وضعیت کانتینر
+          docker logs wireguard
+
+      - name: Test Connection
+        run: |
+          echo "=== Checking Docker container ==="
+          docker ps | grep wireguard
           
           echo "=== WireGuard Status ==="
-          sudo wg show
+          docker exec wireguard wg show
           
-          # تست اتصال
-          sleep 2
-          ping -c 3 10.0.0.1 || echo "Ping failed, but continuing..."
+          echo "=== Test VPN Connection ==="
+          docker exec wireguard curl -s --max-time 10 ifconfig.me || echo "Using internal network"
+          
+          # تست دسترسی به شبکه داخلی
+          # docker exec wireguard ping -c 3 10.0.0.1
 
-      - name: Add route for VPN traffic
+      - name: Run Your Tasks via VPN
         run: |
-          # اضافه کردن route (اگر فقط شبکه داخلی نیاز دارید)
-          sudo ip route add 10.0.0.0/24 dev wg0 || true
+          # مثال: دسترسی به سرویس داخلی
+          echo "Accessing internal service through VPN..."
           
-          # یا برای تمام ترافیک (با احتیاط!)
-          # sudo ip route add default dev wg0 table 100 || true
-          # sudo ip rule add from all lookup 100 || true
+          # از طریق کانتینر دستورات را اجرا کنید
+          docker exec wireguard curl -s http://your-internal-service.local || true
+          
+          # یا اگر نیاز به پروکسی دارید:
+          # docker run --rm --network container:wireguard curlimages/curl:latest http://internal-api.local
 
-      - name: Use VPN Connection
-        run: |
-          echo "VPN should be connected. Routing table:"
-          ip route show
-          
-          echo "Testing connection via VPN interface:"
-          curl --interface wg0 --connect-timeout 5 http://10.0.0.1 || echo "Service not reachable, but VPN is up"
-          
-          # کارهای شما اینجا...
-
-      - name: Cleanup VPN
+      - name: Cleanup
         if: always()
         run: |
-          echo "Cleaning up..."
-          sudo ip link del wg0 2>/dev/null || true
-          sudo killall wireguard-go 2>/dev/null || true
+          echo "Stopping VPN..."
+          docker stop wireguard || true
+          docker rm wireguard || true
+          rm -rf /tmp/wg-config
           echo "Cleanup completed"
