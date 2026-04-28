@@ -1,8 +1,8 @@
 name: Connect via WireGuard VPN
 
 on:
-  workflow_dispatch:  # اجرای دستی
-  push:               # یا هر تریگر دلخواه
+  workflow_dispatch:
+  push:
     branches: [ main ]
 
 jobs:
@@ -13,43 +13,83 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install WireGuard
+      - name: Install WireGuard Tools and wireguard-go
         run: |
           sudo apt-get update
-          sudo apt-get install -y wireguard-tools openresolv
+          sudo apt-get install -y wireguard-tools resolvconf
+          
+          # نصب wireguard-go (userspace implementation)
+          wget https://github.com/amnezia-vpn/amneziawg-go/releases/download/v0.2.12/amneziawg-go-linux-amd64.tar.gz
+          tar -xzf amneziawg-go-linux-amd64.tar.gz
+          sudo mv amneziawg-go /usr/local/bin/
+          sudo chmod +x /usr/local/bin/amneziawg-go
+          
+          # یا استفاده از wireguard-go اصلی
+          # sudo apt-get install -y golang-go
+          # git clone https://git.zx2c4.com/wireguard-go
+          # cd wireguard-go && make && sudo mv wireguard-go /usr/local/bin/
 
       - name: Setup WireGuard Config
         env:
           WG_CONFIG: ${{ secrets.WIREGUARD_CONFIG }}
         run: |
-          # ایجاد فایل کانفیگ از Secret
+          # ذخیره کانفیگ
           echo "$WG_CONFIG" | sudo tee /etc/wireguard/wg0.conf > /dev/null
           sudo chmod 600 /etc/wireguard/wg0.conf
-
-      - name: Bring up WireGuard Interface
-        run: |
-          # فعال‌سازی اینترفیس
-          sudo wg-quick up wg0
           
-          # نمایش وضعیت اتصال
+          # نمایش کانفیگ (بدون کلید خصوصی)
+          sudo cat /etc/wireguard/wg0.conf | grep -v PrivateKey
+
+      - name: Start wireguard-go in background
+        run: |
+          # ایجاد اینترفیس tun
+          export WG_TUN_NAME=wg0
+          sudo ip tuntap add dev $WG_TUN_NAME mode tun || true
+          
+          # اجرای wireguard-go در بکگراند
+          export LOG_LEVEL=debug
+          sudo -E wireguard-go $WG_TUN_NAME &
+          sleep 2
+          
+          # تنظیم آدرس IP
+          sudo ip addr add 10.0.0.2/24 dev $WG_TUN_NAME || true
+          
+          # بالا آوردن اینترفیس
+          sudo ip link set up dev $WG_TUN_NAME
+          
+          # اعمال کانفیگ
+          sudo wg setconf $WG_TUN_NAME /etc/wireguard/wg0.conf
+          
           echo "=== WireGuard Status ==="
           sudo wg show
           
-          # بررسی اتصال (اختیاری - پینگ یک آیپی داخلی)
-          # ping -c 3 10.0.0.1
+          # تست اتصال
+          sleep 2
+          ping -c 3 10.0.0.1 || echo "Ping failed, but continuing..."
+
+      - name: Add route for VPN traffic
+        run: |
+          # اضافه کردن route (اگر فقط شبکه داخلی نیاز دارید)
+          sudo ip route add 10.0.0.0/24 dev wg0 || true
+          
+          # یا برای تمام ترافیک (با احتیاط!)
+          # sudo ip route add default dev wg0 table 100 || true
+          # sudo ip rule add from all lookup 100 || true
 
       - name: Use VPN Connection
         run: |
-          # اینجا کارهایی که با VPN نیاز دارید را انجام دهید
-          echo "VPN is connected. Your public IP via VPN:"
-          curl -s --interface wg0 ifconfig.me || echo "Check your routing"
+          echo "VPN should be connected. Routing table:"
+          ip route show
           
-          # مثال: دسترسی به یک سرویس داخلی
-          # curl http://internal-service.local
+          echo "Testing connection via VPN interface:"
+          curl --interface wg0 --connect-timeout 5 http://10.0.0.1 || echo "Service not reachable, but VPN is up"
+          
+          # کارهای شما اینجا...
 
-      - name: Bring down WireGuard Interface
-        if: always()  # همیشه اجرا شود حتی اگر مراحل قبل fail شوند
+      - name: Cleanup VPN
+        if: always()
         run: |
-          echo "Disconnecting VPN..."
-          sudo wg-quick down wg0 || true
-          echo "VPN disconnected"
+          echo "Cleaning up..."
+          sudo ip link del wg0 2>/dev/null || true
+          sudo killall wireguard-go 2>/dev/null || true
+          echo "Cleanup completed"
