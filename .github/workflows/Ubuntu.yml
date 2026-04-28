@@ -1,4 +1,4 @@
-name: Connect via WireGuard VPN
+name: WireGuard VPN Debug
 
 on:
   workflow_dispatch:
@@ -20,7 +20,8 @@ jobs:
           mkdir -p /tmp/wg-config
           echo "$WG_CONFIG" > /tmp/wg-config/wg0.conf
           chmod 600 /tmp/wg-config/wg0.conf
-          echo "WireGuard config created"
+          echo "Config file created"
+          cat /tmp/wg-config/wg0.conf | grep -v PrivateKey
 
       - name: Start WireGuard Container
         run: |
@@ -34,23 +35,44 @@ jobs:
             --sysctl="net.ipv4.conf.all.src_valid_mark=1" \
             linuxserver/wireguard:latest
           
-          echo "Waiting for WireGuard to connect..."
-          sleep 15
+          echo "Waiting for container to start..."
+          sleep 5
           
-          echo "=== Connection Status ==="
-          docker exec wireguard wg show
+          echo "=== Container logs (first 30 lines) ==="
+          docker logs wireguard 2>&1 | head -30
 
-      - name: Your Task 1
+      - name: Check Container Status
         run: |
-          echo "VPN is running..."
-          docker exec wireguard curl -s ifconfig.me
+          echo "=== All containers ==="
+          docker ps -a
+          
+          echo "=== WireGuard container status ==="
+          docker inspect wireguard | grep -A 5 "State"
+          
+          echo "=== Container logs (last 20 lines) ==="
+          docker logs wireguard 2>&1 | tail -20
 
-      - name: Your Task 2
+      - name: Test Connection
         run: |
-          echo "VPN still running..."
-          docker exec wireguard ping -c 3 8.8.8.8
-
-      - name: Your Task 3
-        run: |
-          echo "VPN still active!"
-          # هر کاری که نیاز دارید انجام بدید
+          # Check if container is running
+          if docker ps | grep -q wireguard; then
+            echo "Container is running"
+            
+            # Try wg show with error handling
+            docker exec wireguard wg show 2>&1 || echo "wg show failed"
+            
+            # Check network inside container
+            docker exec wireguard ip addr show 2>&1 || echo "ip addr failed"
+            
+            # Check if curl exists in container
+            docker exec wireguard which curl 2>&1 || echo "curl not found in container"
+            
+            # Install curl if needed
+            docker exec wireguard apk add curl 2>&1 || echo "Could not install curl"
+            
+            # Test connection if curl exists
+            docker exec wireguard curl -s --connect-timeout 10 ifconfig.me 2>&1 || echo "curl ifconfig.me failed"
+          else
+            echo "ERROR: Container is not running!"
+            docker logs wireguard 2>&1
+          fi
