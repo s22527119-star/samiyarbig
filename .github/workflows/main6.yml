@@ -11,47 +11,45 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. تنظیم رمز عبور برای اکانت اصلی رانر با استفاده از اسکریپت امضا شده اَپل
-      # این دستور قفل امنیتی سشن رو باز می‌کنه
-      - name: Set Runner Password
-        run: |
-          echo "==== Setting Password ===="
-          sudo dscl . -passwd /Users/runner "RunnerMac2026" || true
-          
-      # ۲. نصب و راه‌اندازی Tailscale
-      - name: Install Tailscale via Homebrew
+      # ۱. راه‌اندازی شبکه Tailscale
+      - name: Install and Connect Tailscale
         run: |
           echo "==== Installing Tailscale ===="
           brew install tailscale
           sudo brew services start tailscale
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
-
-      # ۳. اتصال به شبکه Tailscale
-      - name: Connect Tailscale
-        run: |
-          echo "==== Starting Tailscale Connection ===="
+          
+          echo "==== Connecting to Tailscale ===="
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۴. استارت زنده و بومی سرویس اشتراک‌گذاری دسکتاپ مک
-      - name: Start Native macOS Screen Sharing
+      # ۲. فعال‌سازی VNC با محدودیت طلایی ۸ کاراکتر
+      - name: Enable Legacy VNC for macOS
         run: |
-          echo "==== Launching Apple Screen Sharing ===="
-          # استفاده از دستور صحیح load برای استارت کردن دیمن VNC مک
-          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
-
+          echo "==== Configuring Apple Remote Desktop ===="
+          # رمز عبور دقیقاً ۸ کاراکتر تنظیم شده است: mac2026!
+          VNC_PASS="mac2026!"
           
-      # ۵. دریافت آی‌پی برای اتصال
-      - name: Get Runner IP Address
-        run: |
-          echo "==== Connection Details ===="
-          echo "Your Tailscale IP is:"
-          tailscale ip -4
-          echo "Username: runner"
-          echo "Password: RunnerMac2026"
+          # فعال کردن اشتراک‌گذاری صفحه و ست کردن پسورد VNC
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvncmanaged -vncmanaged -initialation
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "$VNC_PASS"
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
 
-      # ۶. زنده نگه داشتن رانر
+      # ۳. بیدار نگه داشتن دیسپلی برای جلوگیری از قطع شدن گرافیک
+      - name: Prevent Sleep and Display Sleep
+        run: |
+          echo "==== Forcing macOS to stay awake ===="
+          sudo caffeinate -disu &
+
+      # ۴. دریافت اطلاعات اتصال
+      - name: Get Connection Details
+        run: |
+          echo "==== Ready to Connect ===="
+          echo "Tailscale IP: $(tailscale ip -4)"
+          echo "VNC Password: mac2026!"
+
+      # ۵. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
-          echo "Runner is perfectly running with 16 vCPUs."
+          echo "Runner is perfectly running with 16 vCPUs. Connect now!"
           sleep 7200
           
