@@ -1,49 +1,53 @@
 name: Hosted macOS 16vCPU Environment
 
 on:
-  workflow_dispatch: # اجرای دستی از تب Actions
+  workflow_dispatch:
 
 jobs:
   macos-desktop:
-    # نام دقیق رانر ابری جدیدتان را اینجا جایگزین کنید
     runs-on: avrea-macos-26-16-vcpu 
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. نصب و راه‌اندازی سریع Tailscale روی مک‌او‌اس خام
-      - name: Install and Connect Tailscale
+      # ۱. نصب Tailscale با استفاده از Homebrew و لینک کردن خط فرمان
+      - name: Install Tailscale via Homebrew
         run: |
-          echo "==== Installing Tailscale ===="
-          curl -fsSL https://tailscale.com/install.sh | sh
+          echo "==== Installing Tailscale with Homebrew ===="
+          brew install tailscale
           
-          echo "==== Starting Tailscale ===="
-          # اتصال با استفاده از Auth Key که در سکرت‌های گیت‌هاب ست کرده‌اید
+          echo "==== Starting Tailscale Daemon ===="
+          # شروع به کار سرویس بک‌گراند تیل‌اسکیل در مک
+          sudo brew services start tailscale
+          
+          # ایجاد لینک برای دسترسی مستقیم به دستور tailscale در سراسر سیستم
+          sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
+          sudo ln -s /usr/local/bin/tailscale /usr/bin/tailscale || true
+
+      # ۲. اتصال به شبکه Tailscale
+      - name: Connect Tailscale
+        run: |
+          echo "==== Starting Tailscale Connection ===="
+          # احراز هویت با استفاده از کلید سکرت شما
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. فعال‌سازی VNC بومی سیستم‌عامل macOS (Apple Screen Sharing)
+      # ۳. فعال‌سازی VNC بومی سیستم‌عامل macOS
       - name: Enable macOS VNC
         run: |
           echo "==== Configuring VNC (Screen Sharing) ===="
-          # فعال کردن ابزار مدیریت ریموت اپل
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvncmanaged -vncmanaged -initialation
-          
-          # تنظیم پسورد VNC (به جای VncPassword123 رمز دلخواه بگذارید)
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "VncPassword123"
-          
-          # ری‌استارت سرویس برای اعمال تغییرات
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
 
-      # ۳. نمایش آی‌پي اختصاصی برای اتصال شما
+      # ۴. نمایش آی‌پي اختصاصی جهت اتصال
       - name: Get Runner IP Address
         run: |
           echo "==== Connection Details ===="
           echo "Your Tailscale IP is:"
           tailscale ip -4
 
-      # ۴. زنده نگه داشتن رانر برای کار گرافیکی
-      # این استپ رانر را تا ۲ ساعت باز نگه می‌دارد تا سرور بسته نشود. هر زمان کارتان تمام شد Cancel Job را بزنید.
+      # ۵. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
           echo "Runner is running with 16 vCPUs. Connect via VNC now."
