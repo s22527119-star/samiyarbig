@@ -11,54 +11,49 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. ساخت یک کاربر ادمین جدید برای عبور از سد امنیتی مک
-      - name: Create New Admin User for VNC
+      # ۱. نصب Tailscale و TigerVNC از طریق Brew
+      - name: Install Tailscale and TigerVNC via Homebrew
         run: |
-          echo "==== Creating New Admin User ===="
-          # ایجاد کاربر جدید به نام adminvnc
-          sudo sysadminctl -addUser adminvnc -fullName "VNC Admin" -password "RunnerMac2026"
+          echo "==== Installing Dependencies ===="
+          brew install tailscale tigervnc
           
-          # ارتقای کاربر به سطح ادمین (مدیر سیستم)
-          sudo dscl . -append /Groups/admin GroupMembership adminvnc
-          
-          echo "User adminvnc created successfully!"
-
-
-      # ۲. نصب Tailscale با استفاده از Homebrew
-      - name: Install Tailscale via Homebrew
-        run: |
-          echo "==== Installing Tailscale with Homebrew ===="
-          brew install tailscale
+          echo "==== Starting Tailscale Daemon ===="
           sudo brew services start tailscale
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo ln -s /usr/local/bin/tailscale /usr/bin/tailscale || true
 
-      # ۳. اتصال به شبکه Tailscale
+      # ۲. اتصال به شبکه Tailscale
       - name: Connect Tailscale
         run: |
           echo "==== Starting Tailscale Connection ===="
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۴. فعال‌سازی VNC بومی سیستم‌عامل macOS
-      - name: Enable macOS VNC
+      # ۳. راه‌اندازی شبیه‌ساز نمایشگر و سرور VNC مستقل
+      - name: Start Independent VNC Server
         run: |
-          echo "==== Configuring VNC (Screen Sharing) ===="
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvncmanaged -vncmanaged -initialation
-          # رمز ورود اولیه VNC (پاپ‌آپ اول)
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "VncPassword123"
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
-
-      # ۵. نمایش آی‌پي اختصاصی جهت اتصال
+          echo "==== Configuring TigerVNC ===="
+          # ساخت پوشه کانفیگ VNC برای کاربر فعلی
+          mkdir -p ~/.vnc
+          
+          # تنظیم مستقیم رمز عبور VNC بدون واسطه اپل (رمز: VncPassword123)
+          echo "VncPassword123" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+          
+          echo "==== Launching VNC Server ===="
+          # اجرای سرور روی دیسپلی :1 (پورت 5901) با دور زدن سکیوریتی اپل
+          vncserver :1 -geometry 1280x720 -depth 24
+          
+      # ۴. نمایش آی‌پي اختصاصی جهت اتصال
       - name: Get Runner IP Address
         run: |
           echo "==== Connection Details ===="
           echo "Your Tailscale IP is:"
           tailscale ip -4
-          echo "macOS Username: $(whoami)"
+          echo "Connect to: <YOUR_TAILSCALE_IP>:5901"
 
-      # ۶. زنده نگه داشتن رانر
+      # ۵. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
-          echo "Runner is running with 16 vCPUs. Connect via VNC now."
+          echo "Runner is running with 16 vCPUs. TigerVNC is active."
           sleep 7200
           
