@@ -11,16 +11,17 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. تنظیم رمز عبور جدید برای کاربر سیستم با دسترسی روت
-      - name: Set macOS User Password
+      # ۱. ساخت یک کاربر ادمین جدید برای عبور از سد امنیتی مک
+      - name: Create New Admin User for VNC
         run: |
-          echo "==== Setting macOS User Password ===="
-          CURRENT_USER=$(whoami)
-          echo "Current user is: $CURRENT_USER"
+          echo "==== Creating New Admin User ===="
+          # ایجاد کاربر جدید به نام adminvnc
+          sudo sysadminctl -addUser adminvnc -fullName "VNC Admin" -password "RunnerMac2026"
           
-          # استفاده از sysadminctl برای بازنشانی مستقیم رمز عبور بدون نیاز به پسورد قبلی
-          sudo sysadminctl -deleteUserPassword "$CURRENT_USER" || true
-          sudo sysadminctl -resetPasswordFor "$CURRENT_USER" -newPassword "RunnerMac2026"
+          # ارتقای کاربر به سطح ادمین (مدیر سیستم)
+          sudo dscl . -append /Groups/admin GroupMembership adminvnc
+          
+          echo "User adminvnc created successfully!"
 
 
       # ۲. نصب Tailscale با استفاده از Homebrew
