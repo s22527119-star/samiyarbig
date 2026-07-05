@@ -3,7 +3,7 @@ on: workflow_dispatch
 
 jobs:
   desktop:
-    runs-on: warp-macos-15-arm64-6x
+    runs-on: avrea-macos-26-16-vcpu
     steps:
       - name: Setup macOS Screen Sharing
         run: |
