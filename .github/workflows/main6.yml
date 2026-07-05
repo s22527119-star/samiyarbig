@@ -11,53 +11,45 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. نصب Tailscale و TigerVNC از طریق Brew
-      - name: Install Tailscale and TigerVNC via Homebrew
+      # ۱. تنظیم رمز عبور برای اکانت اصلی رانر با استفاده از اسکریپت امضا شده اَپل
+      # این دستور قفل امنیتی سشن رو باز می‌کنه
+      - name: Set Runner Password
         run: |
-          echo "==== Installing Dependencies ===="
-          brew install tailscale tigervnc
+          echo "==== Setting Password ===="
+          sudo dscl . -passwd /Users/runner "RunnerMac2026" || true
           
-          echo "==== Starting Tailscale Daemon ===="
+      # ۲. نصب و راه‌اندازی Tailscale
+      - name: Install Tailscale via Homebrew
+        run: |
+          echo "==== Installing Tailscale ===="
+          brew install tailscale
           sudo brew services start tailscale
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
-          sudo ln -s /usr/local/bin/tailscale /usr/bin/tailscale || true
 
-       # ۲. اتصال به شبکه Tailscale
+      # ۳. اتصال به شبکه Tailscale
       - name: Connect Tailscale
         run: |
           echo "==== Starting Tailscale Connection ===="
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۳. راه‌اندازی شبیه‌ساز نمایشگر و سرور VNC مستقل با آدرس‌دهی دقیق
-      - name: Start Independent VNC Server
+      # ۴. استارت زنده و بومی سرویس اشتراک‌گذاری دسکتاپ مک
+      - name: Start Native macOS Screen Sharing
         run: |
-          echo "==== Configuring TigerVNC ===="
-          # پیدا کردن مسیر دقیق نصب باینری‌های Brew
-          BREW_BIN="$(brew --prefix)/bin"
+          echo "==== Launching Apple Screen Sharing ===="
+          sudo launchctl activate system/com.apple.screensharing
           
-          # ساخت پوشه کانفیگ VNC
-          mkdir -p ~/.vnc
-          
-          # تنظیم مستقیم رمز عبور VNC با استفاده از مسیر کامل دستور (رمز: VncPassword123)
-          echo "VncPassword123" | $BREW_BIN/vncpasswd -f > ~/.vnc/passwd
-          chmod 600 ~/.vnc/passwd
-          
-          echo "==== Launching VNC Server ===="
-          # اجرای سرور با استفاده از مسیر کامل دستور روی پورت 5901
-          $BREW_BIN/vncserver :1 -geometry 1280x720 -depth 24
-
-          
-      # ۴. نمایش آی‌پي اختصاصی جهت اتصال
+      # ۵. دریافت آی‌پی برای اتصال
       - name: Get Runner IP Address
         run: |
           echo "==== Connection Details ===="
           echo "Your Tailscale IP is:"
           tailscale ip -4
-          echo "Connect to: <YOUR_TAILSCALE_IP>:5901"
+          echo "Username: runner"
+          echo "Password: RunnerMac2026"
 
-      # ۵. زنده نگه داشتن رانر
+      # ۶. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
-          echo "Runner is running with 16 vCPUs. TigerVNC is active."
+          echo "Runner is perfectly running with 16 vCPUs."
           sleep 7200
           
