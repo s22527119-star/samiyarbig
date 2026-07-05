@@ -1,0 +1,51 @@
+name: Hosted macOS 16vCPU Environment
+
+on:
+  workflow_dispatch: # اجرای دستی از تب Actions
+
+jobs:
+  macos-desktop:
+    # نام دقیق رانر ابری جدیدتان را اینجا جایگزین کنید
+    runs-on: avrea-macos-26-16-vcpu 
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ۱. نصب و راه‌اندازی سریع Tailscale روی مک‌او‌اس خام
+      - name: Install and Connect Tailscale
+        run: |
+          echo "==== Installing Tailscale ===="
+          curl -fsSL https://tailscale.com/install.sh | sh
+          
+          echo "==== Starting Tailscale ===="
+          # اتصال با استفاده از Auth Key که در سکرت‌های گیت‌هاب ست کرده‌اید
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
+
+      # ۲. فعال‌سازی VNC بومی سیستم‌عامل macOS (Apple Screen Sharing)
+      - name: Enable macOS VNC
+        run: |
+          echo "==== Configuring VNC (Screen Sharing) ===="
+          # فعال کردن ابزار مدیریت ریموت اپل
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvncmanaged -vncmanaged -initialation
+          
+          # تنظیم پسورد VNC (به جای VncPassword123 رمز دلخواه بگذارید)
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "VncPassword123"
+          
+          # ری‌استارت سرویس برای اعمال تغییرات
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+
+      # ۳. نمایش آی‌پي اختصاصی برای اتصال شما
+      - name: Get Runner IP Address
+        run: |
+          echo "==== Connection Details ===="
+          echo "Your Tailscale IP is:"
+          tailscale ip -4
+
+      # ۴. زنده نگه داشتن رانر برای کار گرافیکی
+      # این استپ رانر را تا ۲ ساعت باز نگه می‌دارد تا سرور بسته نشود. هر زمان کارتان تمام شد Cancel Job را بزنید.
+      - name: Keep Runner Alive
+        run: |
+          echo "Runner is running with 16 vCPUs. Connect via VNC now."
+          sleep 7200
+          
