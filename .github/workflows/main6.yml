@@ -1,4 +1,4 @@
-name: Hosted macOS 16vCPU Environment
+name: Hosted macOS 16vCPU Environment (NoMachine)
 
 on:
   workflow_dispatch:
@@ -11,59 +11,61 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. راه‌اندازی شبکه Tailscale
+      # ۱. راه‌اندازی شبکه Tailscale (امن‌ترین مسیر برای NoMachine)
       - name: Install and Connect Tailscale
         run: |
           echo "==== Installing Tailscale ===="
           brew install tailscale
           sudo brew services start tailscale
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
+          
+          echo "==== Connecting to Tailscale ===="
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. ساخت کاربر، فعال‌سازی ورود خودکار و لغو به خواب رفتن گرافیک
-      - name: Create macOS User and Prevent Black Screen
+      # ۲. ساخت کاربر برای مک و NoMachine
+      - name: Create macOS User
         run: |
           echo "==== Creating GUI User ===="
-          sudo sysadminctl -addUser vncuser -fullName "VNC User" -password "mac2026!" -admin
-          sudo dscl . -create /Users/vncuser IsHidden 0
+          # ساخت یوزر ادمین جدید برای لاگین
+          sudo sysadminctl -addUser nxuser -fullName "NoMachine Admin" -password "mac2026!" -admin
+          sudo dscl . -create /Users/nxuser IsHidden 0
           
-          echo "==== Enabling AutoLogin ===="
-          # این دستور باعث می‌شود مک‌او‌اس بدون پرسیدن رمز مستقیماً وارد دسکتاپ شود
-          sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser "vncuser"
-          
-          echo "==== Disabling Sleep (Fix for Black Screen) ===="
-          # خاموش کردن کامل سیستم مدیریت مصرف برق برای بیدار ماندن تصویر
+          # خاموش کردن خواب سیستم
           sudo pmset -a displaysleep 0 sleep 0 disksleep 0
 
-      # ۳. فعال‌سازی VNC با محدودیت ۸ کاراکتر
-      - name: Enable Legacy VNC for macOS
+      # ۳. نصب NoMachine از طریق Homebrew Cask
+      - name: Install NoMachine
         run: |
-          echo "==== Configuring Apple Remote Desktop ===="
-          VNC_PASS="mac2026!"
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvncmanaged -vncmanaged -initialation
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "$VNC_PASS"
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -users vncuser -access -on -privs -all
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+          echo "==== Downloading and Installing NoMachine ===="
+          brew install --cask nomachine
 
-      # ۴. شوک به گرافیک (شبیه‌سازی کیبورد)
-      - name: Force Wake Screen
+      # ۴. راه‌اندازی و ری‌استارت سرویس NX Server
+      - name: Configure NoMachine Server
         run: |
-          echo "==== Waking up WindowServer ===="
-          caffeinate -u -t 10 &
-          sleep 5
-          # فشردن مجازی کلید اسپیس برای اطمینان از روشن شدن دیسپلی
-          osascript -e 'tell application "System Events" to key code 49' || true
+          echo "==== Restarting NX Service ===="
+          # اطمینان از اینکه سرویس بعد از نصب روی آی‌پی تیل‌اسکیل گوش می‌دهد
+          sudo /etc/NX/nxserver --restart
+          sudo /etc/NX/nxserver --status
 
-      # ۵. دریافت اطلاعات اتصال
+      # ۵. بیدار نگه داشتن دیسپلی
+      - name: Prevent Sleep
+        run: |
+          echo "==== Forcing macOS to stay awake ===="
+          sudo caffeinate -disu &
+
+      # ۶. اطلاعات اتصال
       - name: Get Connection Details
         run: |
           echo "==== Ready to Connect ===="
           echo "Tailscale IP: $(tailscale ip -4)"
-          echo "VNC Password: mac2026!"
+          echo "Port: 4000 (Default)"
+          echo "-----------------------------------"
+          echo "Username: nxuser"
+          echo "Password: mac2026!"
 
-      # ۶. زنده نگه داشتن رانر
+      # ۷. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
-          echo "Runner is perfectly running with 16 vCPUs. Connect now!"
+          echo "Runner is perfectly running. Open NoMachine Player and connect!"
           sleep 7200
           
