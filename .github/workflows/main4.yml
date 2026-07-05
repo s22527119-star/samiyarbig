@@ -4,7 +4,7 @@ on: workflow_dispatch
 jobs:
   build:
     name: "M4 Infrastructure Simulation"
-    runs-on: macos-14
+    runs-on: avrea-macos-26-16-vcpu
     permissions:
       contents: read
       id-token: write
