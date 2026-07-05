@@ -5,7 +5,7 @@ on:
 
 jobs:
   win-vm:
-    runs-on: ubuntu-22.04
+    runs-on: avrea-ubuntu-latest-2-vcpu
 
     steps:
       - name: Checkout
