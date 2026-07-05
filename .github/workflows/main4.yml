@@ -86,23 +86,9 @@ jobs:
         run: |
           mkdir -p ~/.docker
           AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64)
-          echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$AUTH\"}}}" > ~/.docker/config.json
+          echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"$AUTH\"}}}" > ~/.docker/config.json 
 
-      # ۶. نصب Depot و بیلد
-      - name: Install Depot CLI
-        run: brew install depot/tap/depot
-
-      - name: Depot Build
-        run: |
-          depot build . \
-            --project 2hwk5n6kr1 \
-            --file ${{ steps.find-dockerfile.outputs.path }} \
-            --push \
-            --tag ghcr.io/${{ github.repository_owner }}/m4-sim-image:latest
-        env:
-          DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }} 
-
-      # ۷. نمایش اطلاعات نهایی
+      # ۶. نمایش اطلاعات نهایی
       - name: Ready to Connect
         run: |
           echo "======================================================="
