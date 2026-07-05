@@ -11,14 +11,17 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. تنظیم رمز عبور برای کاربر فعلی سیستم‌عامل مک
+      # ۱. تنظیم رمز عبور جدید برای کاربر سیستم با دسترسی روت
       - name: Set macOS User Password
         run: |
           echo "==== Setting macOS User Password ===="
-          # این دستور نام کاربر فعلی (معمولاً runner) را پیدا کرده و رمز را به RunnerMac2026 تغییر می‌دهد
           CURRENT_USER=$(whoami)
           echo "Current user is: $CURRENT_USER"
-          sudo dscl . -passwd /Users/$CURRENT_USER "RunnerMac2026"
+          
+          # استفاده از sysadminctl برای بازنشانی مستقیم رمز عبور بدون نیاز به پسورد قبلی
+          sudo sysadminctl -deleteUserPassword "$CURRENT_USER" || true
+          sudo sysadminctl -resetPasswordFor "$CURRENT_USER" -newPassword "RunnerMac2026"
+
 
       # ۲. نصب Tailscale با استفاده از Homebrew
       - name: Install Tailscale via Homebrew
