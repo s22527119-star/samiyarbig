@@ -36,7 +36,9 @@ jobs:
       - name: Start Native macOS Screen Sharing
         run: |
           echo "==== Launching Apple Screen Sharing ===="
-          sudo launchctl activate system/com.apple.screensharing
+          # استفاده از دستور صحیح load برای استارت کردن دیمن VNC مک
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
+
           
       # ۵. دریافت آی‌پی برای اتصال
       - name: Get Runner IP Address
