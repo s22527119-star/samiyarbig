@@ -22,32 +22,49 @@ jobs:
           echo "==== Connecting to Tailscale ===="
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. فعال‌سازی VNC با محدودیت طلایی ۸ کاراکتر
+      # ۲. ساخت کاربر جدید برای لاگین به دسکتاپ مک (سازگار با مک‌او‌اس Sequoia)
+      - name: Create macOS Local User
+        run: |
+          echo "==== Creating GUI User ===="
+          # ساخت یک یوزر ادمین به نام vncuser با رمز mac2026!
+          sudo sysadminctl -addUser vncuser -fullName "VNC User" -password "mac2026!" -admin
+          
+          # اطمینان از اینکه یوزر در صفحه لاگین مخفی نیست
+          sudo dscl . -create /Users/vncuser IsHidden 0
+
+      # ۳. فعال‌سازی VNC با محدودیت ۸ کاراکتر و دادن دسترسی به یوزر جدید
       - name: Enable Legacy VNC for macOS
         run: |
           echo "==== Configuring Apple Remote Desktop ===="
-          # رمز عبور دقیقاً ۸ کاراکتر تنظیم شده است: mac2026!
           VNC_PASS="mac2026!"
           
-          # فعال کردن اشتراک‌گذاری صفحه و ست کردن پسورد VNC
+          # استارت سرویس و تنظیم رمز ۸ کاراکتری
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -clientopts -setvncmanaged -vncmanaged -initialation
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "$VNC_PASS"
+          
+          # دادن مجوز صریح ریموت دسکتاپ به کاربری که در مرحله قبل ساختیم
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -users vncuser -access -on -privs -all
+          
+          # ری‌استارت سرویس جهت اعمال تغییرات
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
 
-      # ۳. بیدار نگه داشتن دیسپلی برای جلوگیری از قطع شدن گرافیک
-      - name: Prevent Sleep and Display Sleep
+      # ۴. بیدار نگه داشتن دیسپلی
+      - name: Prevent Sleep
         run: |
           echo "==== Forcing macOS to stay awake ===="
           sudo caffeinate -disu &
 
-      # ۴. دریافت اطلاعات اتصال
+      # ۵. دریافت اطلاعات اتصال
       - name: Get Connection Details
         run: |
           echo "==== Ready to Connect ===="
           echo "Tailscale IP: $(tailscale ip -4)"
-          echo "VNC Password: mac2026!"
+          echo "-----------------------------------"
+          echo "VNC Password (for VNC Viewer): mac2026!"
+          echo "macOS Username (for Login Screen): vncuser"
+          echo "macOS Password (for Login Screen): mac2026!"
 
-      # ۵. زنده نگه داشتن رانر
+      # ۶. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
           echo "Runner is perfectly running with 16 vCPUs. Connect now!"
