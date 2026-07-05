@@ -22,7 +22,7 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo ln -s /usr/local/bin/tailscale /usr/bin/tailscale || true
 
-      # ۲. اتصال به شبکه Tailscale
+       # ۲. اتصال به شبکه Tailscale
       - name: Connect Tailscale
         run: |
           echo "==== Starting Tailscale Connection ===="
