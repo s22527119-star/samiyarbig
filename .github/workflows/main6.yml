@@ -28,20 +28,24 @@ jobs:
           echo "==== Starting Tailscale Connection ===="
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۳. راه‌اندازی شبیه‌ساز نمایشگر و سرور VNC مستقل
+      # ۳. راه‌اندازی شبیه‌ساز نمایشگر و سرور VNC مستقل با آدرس‌دهی دقیق
       - name: Start Independent VNC Server
         run: |
           echo "==== Configuring TigerVNC ===="
-          # ساخت پوشه کانفیگ VNC برای کاربر فعلی
+          # پیدا کردن مسیر دقیق نصب باینری‌های Brew
+          BREW_BIN="$(brew --prefix)/bin"
+          
+          # ساخت پوشه کانفیگ VNC
           mkdir -p ~/.vnc
           
-          # تنظیم مستقیم رمز عبور VNC بدون واسطه اپل (رمز: VncPassword123)
-          echo "VncPassword123" | vncpasswd -f > ~/.vnc/passwd
+          # تنظیم مستقیم رمز عبور VNC با استفاده از مسیر کامل دستور (رمز: VncPassword123)
+          echo "VncPassword123" | $BREW_BIN/vncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
           
           echo "==== Launching VNC Server ===="
-          # اجرای سرور روی دیسپلی :1 (پورت 5901) با دور زدن سکیوریتی اپل
-          vncserver :1 -geometry 1280x720 -depth 24
+          # اجرای سرور با استفاده از مسیر کامل دستور روی پورت 5901
+          $BREW_BIN/vncserver :1 -geometry 1280x720 -depth 24
+
           
       # ۴. نمایش آی‌پي اختصاصی جهت اتصال
       - name: Get Runner IP Address
