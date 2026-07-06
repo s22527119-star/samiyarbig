@@ -1,91 +1,88 @@
-name: macOS Tahoe Remote Desktop (NoMachine + Tailscale)
+name: Hosted macOS 16vCPU (Sunshine Audio/Video Fix)
 
 on:
-  workflow_dispatch: # اجرای دستی ورک‌فلو از پنل گیت‌هاب
+  workflow_dispatch:
 
 jobs:
-  setup-remote-desktop:
-    runs-on: namespace-profile-samiyarbig # اجرای روی جدیدترین نسخه مک‌او‌اس ارائه شده توسط گیت‌هاب
-    
+  macos-desktop:
+    runs-on: namespace-profile-samiyarbig 
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install NoMachine and Tailscale via Homebrew
+      # ۱. اتصال به Tailscale
+      - name: Install and Connect Tailscale
         run: |
-          echo "=== 1. INSTALLING SOFTWARE ==="
-          # نصب تیل‌اسکیل به صورت عادی
-          brew install --cask tailscale
-          
-          # دانلود و نصب نوماشین با دور زدن خطای چک‌سام (SHA-256)
-          brew install --cask --ignore-dependencies --no-quarantine --skip-cask-deps --force nomachine || true
-          
-          # اگر هوم‌برو باز هم لجبازی کرد، فایل رسمی را مستقیم دانلود و نصب اجباری می‌کنیم
-          if [ ! -d "/Applications/NoMachine.app" ]; then
-            echo "Homebrew failed, switching to direct installation..."
-            curl -A "Mozilla/5.0" -L -o nomachine.dmg "https://download.nomachine.com/download/8.14/MacOSX/nomachine_8.14.2_1_arm64.dmg"
-            sudo hdiutil attach nomachine.dmg
-            sudo installer -pkg /Volumes/NoMachine/NoMachine.pkg -target /
-          fi
+          echo "==== Installing Tailscale ===="
+          brew install tailscale
+          sudo brew services start tailscale
+          sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-
-      - name: Configure Virtual Display, Audio, and Input Controls
+      # ۲. اعطای دسترسی مستقیم Screen Recording به Sunshine در هسته مک
+      - name: Bypass Screen Recording Privacy Guards (TCC Injection)
         run: |
-          echo "=== 2. CONFIGURING NOMACHINE FOR GITHUB ACTIONS RUNNER ==="
-          # تعریف ابعاد مانیتور مجازی برای جلوگیری از سیاه شدن صفحه
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey ScreenResolution 1920x1080
+          echo "==== Injecting Screen Recording Permissions ===="
+          # پیدا کردن مسیر دقیق باینری Sunshine
+          SUNSHINE_PATH=$(which sunshine || echo "/opt/homebrew/bin/sunshine")
           
-          # ایجاد کارت گرافیک و مانیتور مجازی مجزا در هسته سیستم‌عامل
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --virtualdisplay add --shared
+          # تزریق مستقیم مجوز ضبط صفحه و دسترسی‌های سیستمی به دیتابیس امنیتی مک
+          # این کامند قفل کپچر تصویر و صدای سیستم را باز می‌کند
+          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','$SUNSHINE_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
+          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$SUNSHINE_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
           
-          # فعال‌سازی و اعطای دسترسی‌های کامل به کیبورد، ماوس و استریم صدا
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey PhysicalDisplayAllowVirtualInbound yes
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey EnableUserInterface yes
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey EnableAudioStreaming yes
-          
-          # اضافه کردن یوزر رانر گیت‌هاب به لیست مجاز ورودی‌های سخت‌افزاری نوماشین
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --ruleadd user=runner class=input service=yes
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --ruleadd user=runner class=audio service=yes
-          
-          # راه اندازی مجدد سرویس برای بارگذاری درایورهای صوتی و تصویری مجازی
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --restart
+          # اعمال و رفرش کردن دسترسی‌های جدید سیستم‌عامل Tahoe
+          sudo tccutil reset ScreenCapture || true
+          sudo defaults write /Library/Preferences/com.apple.RemoteManagement PrivacyInquiry -bool false || true
 
-      - name: Prevent macOS Virtual Graphics from Sleeping
+      # ۳. نصب و پیکربندی خروجی و ضبط صدا (Screen Recording Audio)
+      - name: Install and Route Screen Audio Driver
         run: |
-          echo "=== 3. KEEPING GRAPHICS FRAMEBUFFER ALIVE ==="
-          # بیدار نگه داشتن دسکتاپ مجازی مک به مدت ۶ ساعت (۲۱۶۰۰ ثانیه) در پس‌زمینه
-          sudo caffeinate -u -d -t 21600 &
+          echo "==== Installing BlackHole Audio Driver ===="
+          brew install blackhole-2ch
+          
+          # بیدار کردن و لود مجدد سیستم صوتی مک
+          sudo killall coreaudiod || true
+          sleep 3
+          
+          echo "==== Routing macOS System Audio to Virtual Driver ===="
+          # ست کردن کارت صدای مجازی BlackHole به عنوان خروجی اصلی صدا در مک برای ضبط توسط Sunshine
+          sudo SwitchAudioSource -s "BlackHole 2ch" || true
 
-      - name: Start and Authenticate Tailscale Network
-        env:
-          # اختیاری: اگر می‌خواهی بدون کلیک روی لینک متصل شوی، یک Auth Key از پنل تیل‌اسکیل بساز و در Secrets گیت‌هاب ست کن.
-          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+      # ۴. بیدارباش گرافیک و فریم‌بافر دسکتاپ
+      - name: Configure Virtual Framebuffer
         run: |
-          echo "=== 4. LAUNCHING TAILSCALE ==="
-          # اجرای دیمون اصلی تیل‌اسکیل
-          sudo open -a Tailscale --args --no-window
+          echo "==== Keeping Video Framebuffer Alive ===="
+          # بیدار نگه داشتن دسکتاپ و سیستم کپچر تصویر
+          sudo caffeinate -u -d -i -s -t 7200 &
+          sleep 2
+
+      # ۵. نصب و راه‌اندازی سرور استریمینگ Sunshine
+      - name: Install and Start Sunshine
+        run: |
+          echo "==== Installing Sunshine Server ===="
+          brew install sunshine
+          
+          echo "==== Starting Sunshine with Audio/Video Capture Enabled ===="
+          # اجرای سان‌شاین با دسترسی بالا جهت اعمال دسترسی تصویر و صدا که در مرحله ۲ آزاد کردیم
+          nohup sudo sunshine > /dev/null 2>&1 &
           sleep 5
-          
-          # اتصال به شبکه؛ اگر Auth Key وجود داشته باشد خودکار متصل می‌شود، در غیر این صورت لینک لاگین چاپ می‌شود
-          if [ -z "$TAILSCALE_AUTH_KEY" ]; then
-            echo "Please click the link below to authenticate the runner:"
-            sudo tailscale up
-          else
-            sudo tailscale up --authkey=$TAILSCALE_AUTH_KEY
-          fi
 
-      - name: Output Connection Details and Keep Alive
+      # ۶. نمایش اطلاعات اتصال
+      - name: Get Connection Details
         run: |
-          echo "=== 5. CONNECTION DETAILS ==="
-          echo "----------------------------------------"
-          echo "Your Tailscale IPv4 address is:"
-          tailscale ip -4
-          echo "----------------------------------------"
-          echo "Mac Username: runner"
-          echo "Mac Password: (Leave Blank / No Password configured by GitHub)"
-          echo "----------------------------------------"
-          echo "The workflow will remain active for 5 hours. Close it manually from GitHub when finished."
-          
-          # زنده نگه داشتن کل ورک‌فلو به مدت ۵ ساعت جهت ریموت زدن شما
-          sleep 18000
+          echo "==== Ready to Connect via Sunshine ===="
+          echo "Tailscale IP: $(tailscale ip -4)"
+          echo "Sunshine Web UI: https://$(tailscale ip -4):47990"
+          echo "------------------------------------------------"
+          echo "1. Open the Web UI link in your browser."
+          echo "2. Create a username and password."
+          echo "3. Open 'Moonlight' client on your PC/Phone and enter the IP."
+
+      # ۷. زنده نگه داشتن رانر
+      - name: Keep Runner Alive
+        run: |
+          echo "==== Runner is alive and streaming ===="
+          sleep 7200
           
