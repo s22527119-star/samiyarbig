@@ -4,12 +4,15 @@ on:
   workflow_dispatch:
 
 jobs:
-  macos-desktop:
-    runs-on: MACOS_ARM64_M4_12X56 # رانر اختصاصی شما
-
+  macos:
+    name: "Run on the fastest infrastructure"
+    runs-on: ghcr.io/cirruslabs/macos-runner:tahoe
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: List Installed Xcodes
+        run: xcodes installed
+      - name: Select Xcode 16.2
+        run: sudo xcodes select 16.2
 
       # ۱. اتصال به Tailscale
       - name: Install and Connect Tailscale
