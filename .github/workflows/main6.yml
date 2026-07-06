@@ -1,4 +1,4 @@
-name: Hosted macOS 16vCPU (RustDesk + Tailscale Fix v2)
+name: Hosted macOS 16vCPU (RustDesk + Tailscale Fix v3)
 
 on:
   workflow_dispatch:
@@ -20,23 +20,24 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. نصب RustDesk و ابزارهای صوتی از طریق هوم‌برو (اضافه شدن switch-audio-o)
+      # ۲. نصب RustDesk و ابزارهای صوتی با نام اصلاح شده (switchaudio-osx)
       - name: Install RustDesk and Audio Utilities via Homebrew
         run: |
           echo "==== Installing RustDesk and Tools ===="
-          brew install --cask rustdesk
-          brew install blackhole-2ch
-          brew install switch-audio-o # رفع ارور SwitchAudioSource: command not found
+          brew install --cask rustdesk || true
+          brew install blackhole-2ch || true
           
-          # رفرش کردن سیستم صوتی مک برای شناسایی کارت صدای مجازی
+          # نصب با نام دقیق و درست برای رفع ارور گیت‌هاب
+          brew install switchaudio-osx
+          
+          # رفرش کردن سیستم صوتی مک
           sudo killall coreaudiod || true
           sleep 3
 
-      # ۳. باز کردن مجوزها از طریق راه‌اندازی رسمی و بومی RustDesk
+      # ۳. تنظیم پسورد و فعال‌سازی سرویس پس‌زمینه RustDesk
       - name: Configure RustDesk & macOS Permissions
         run: |
           echo "==== Configuring RustDesk and Accessibility ===="
-          # فعال‌سازی دسترسی مدیریت از راه دور سیستم بدون نیاز به تایید پاپ‌آپ
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement PrivacyInquiry -bool false || true
           
           # تنظیم رمز عبور ثابت برای اتصال مستقیم
@@ -45,15 +46,15 @@ jobs:
           # فعال‌سازی قابلیت اتصال مستقیم با آی‌پي (Direct IP Access)
           sudo defaults write com.carriez.RustDesk.plist direct-server y || true
           
-          # اجرای RustDesk در سطح سیستم (این دستور در نسخه Tahoe به طور خودکار دسترسی‌های لازم را می‌گیرد)
+          # اجرای RustDesk در سطح سیستم (بدون قفل شدن ترمینال)
           nohup sudo /Applications/RustDesk.app/Contents/MacOS/RustDesk --service > /dev/null 2>&1 &
           sleep 5
 
-      # ۴. مسیردهی صدای دسکتاپ به کارت صدای مجازی
+      # ۴. مسیردهی صدای دسکتاپ به کارت صدای مجازی با دستور اصلاح شده
       - name: Route Screen Audio to Virtual Driver
         run: |
           echo "==== Routing macOS System Audio ===="
-          # حالا چون در مرحله ۲ این ابزار را نصب کردیم، دیگر ارور command not found نمی‌دهد
+          # استفاده از دستور دقیق پکیج switchaudio-osx برای انتقال صدا به لایه ضبط راست‌دسک
           SwitchAudioSource -s "BlackHole 2ch" || true
 
       # ۵. بیدارباش کامل محیط گرافیکی و کپچر سیستم (Caffeinate)
