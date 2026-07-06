@@ -36,20 +36,24 @@ jobs:
           echo "==== Downloading and Installing NoMachine ===="
           brew install --cask nomachine
 
-      # ۴. ساخت مانیتور مجازی و بیدار کردن گرافیک مک (حل مشکل صفحه سیاه)
+      # ۴. ساخت مانیتور مجازی واقعی و بیدار کردن گرافیک مک
       - name: Create Virtual Display & Wake Graphics
         run: |
-          echo "==== Installing Display Placer ===="
-          brew tap jakehilborn/jakehilborn
-          brew install displayplacer
+          echo "==== Downloading Virtual Display Driver ===="
+          # دانلود یک باینری آماده برای ساخت مانیتور مجازی در مک
+          curl -L -o virtualdisplay https://github.com/waydabber/mac-virtual-display/releases/latest/download/main-arm64
+          chmod +x virtualdisplay
           
-          echo "==== Forcing WindowServer to Initialize Virtual Screen ===="
-          # فعال‌سازی یک مانیتور مجازی استاندارد
-          displayplacer "res:1920x1080 hz:60 color_depth:8" || true
-          
-          # شوک به موتور گرافیکی برای اعمال مانیتور جدید
-          sudo launchctl kickstart -k system/com.apple.WindowServer || true
+          echo "==== Activating Virtual Monitor (1080p) ===="
+          # اجرای درایور در پس‌زمینه برای ایجاد یک مانیتور مجازی ۱920x1080
+          ./virtualdisplay vtarget=1920:1080:60 &
           sleep 5
+          
+          echo "==== Forcing WindowServer to Refresh ===="
+          # حالا که مانیتور مجازی فعال شده، به گرافیک شوک می‌دهیم تا تصویر را رندر کند
+          sudo launchctl kickstart -k system/com.apple.WindowServer || true
+          sleep 1
+
 
       # ۵. راه‌اندازی مجدد سرویس NoMachine جهت همگام‌سازی با مانیتور جدید
       - name: Configure and Start NoMachine Server
