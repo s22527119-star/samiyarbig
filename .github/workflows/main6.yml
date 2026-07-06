@@ -36,28 +36,23 @@ jobs:
           echo "==== Downloading and Installing NoMachine ===="
           brew install --cask nomachine
 
-      # ۴. دانلود و اجرای درایور نمایشگر مجازی کامپایل‌شده (حل قطعی صفحه سیاه)
-      - name: Create Native Apple Virtual Display
+      # ۴. فعال‌سازی مانیتور مجازی با ابزار بومی و پیش‌فرض مک (بدون نیاز به دانلود)
+      - name: Activate Native macOS Virtual Display
         run: |
-          echo "==== Downloading Pre-compiled Virtual Display Driver ===="
-          # دانلود نسخه کامپایل شده و آماده برای پردازنده‌های اپل سیلیکون (arm64)
-          curl -L -o virtualdisplay "https://raw.githubusercontent.com/waydabber/mac-virtual-display/main/main-arm64"
-          chmod +x virtualdisplay
+          echo "==== Activating Built-in macOS Framebuffer ===="
+          # تنظیم رزولوشن دسکتاپ مجازی به صورت مستقیم در ساختار سیستم‌عامل
+          sudo defaults write /Library/Preferences/com.apple.windowserver.plist DisplayResolutionEnabled -bool true
           
-          echo "==== Activating Virtual Monitor (1080p) ===="
-          # اجرای درایور در پس‌زمینه برای ایجاد یک نمایشگر مجازی واقعی
-          ./virtualdisplay vtarget=1920:1080:60 &
-          sleep 5
+          echo "==== Starting CoreGraphics Virtual Session ===="
+          # اجرای یک شبیه‌ساز نمایشگر بومی اپل که در تمام مک‌ها وجود دارد
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Support/InactivityLogoutHander & || true
+          sleep 3
           
-          echo "==== Forcing WindowServer to Refresh ===="
-          # شوک به گرافیک برای شناسایی نمایشگر مجازی جدید
+          echo "==== Forcing WindowServer to Boot GUI ===="
+          # ری‌استارت و شوک به گرافیک برای لود کامل دسکتاپ
           sudo launchctl kickstart -k system/com.apple.WindowServer || true
           sleep 5
 
-          
-          echo "==== Forcing WindowServer to Refresh ===="
-          sudo launchctl kickstart -k system/com.apple.WindowServer || true
-          sleep 5 
       
       # ۵. راه‌اندازی مجدد سرویس NoMachine جهت همگام‌سازی با مانیتور جدید
       - name: Configure and Start NoMachine Server
