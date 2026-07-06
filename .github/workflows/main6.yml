@@ -1,11 +1,11 @@
-name: Hosted macOS 16vCPU (NoMachine Audio/Video Fix)
+name: Hosted macOS 16vCPU (RustDesk + Tailscale Fix)
 
 on:
   workflow_dispatch:
 
 jobs:
   macos-desktop:
-    runs-on: namespace-profile-samiyarbig # رانر اختصاصی جدید شما
+    runs-on: namespace-profile-samiyarbig # رانر اختصاصی شما
 
     steps:
       - name: Checkout Repository
@@ -20,71 +20,72 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. دانلود و نصب مطمئن NoMachine (دور زدن ارور چک‌سام هوم‌برو)
-      - name: Install NoMachine Server
+      # ۲. نصب راحت و تمیز RustDesk از طریق هوم‌برو
+      - name: Install RustDesk via Homebrew
         run: |
-          echo "==== Downloading and Installing NoMachine ===="
-          brew install --cask nomachine
+          echo "==== Installing RustDesk ===="
+          brew install --cask rustdesk
 
-      # ۳. اعطای دسترسی‌های کامل تصویری، صوتی و حرکتی به NoMachine در مک ۲۶ Tahoe
-      - name: Configure NoMachine Permissions & Virtual Display
+      # ۳. اعطای دسترسی‌های ضبط صفحه، ماوس و کیبورد به RustDesk در مک ۲۶ Tahoe
+      - name: Configure macOS Privacy for RustDesk (TCC Bypass)
         run: |
-          echo "==== Configuring macOS Graphics and Inputs for NoMachine ===="
-          # ایجاد کارت گرافیک و مانیتور مجازی در هسته رانر (حل مشکل سیاه شدن صفحه)
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey ScreenResolution 1920x1080
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --virtualdisplay add --shared
+          echo "==== Injecting RustDesk Permissions into Tahoe TCC ===="
+          # پیدا کردن مسیر دقیق باینری RustDesk
+          RUSTDESK_PATH="/Applications/RustDesk.app/Contents/MacOS/RustDesk"
           
-          # فعال‌سازی و باز کردن قفل ورودی‌های کیبورد، ماوس و استریم صدا بدون نیاز به مانیتور فیزیکی
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey PhysicalDisplayAllowVirtualInbound yes
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey EnableUserInterface yes
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey EnableAudioStreaming yes
+          # تزریق مستقیم مجوز ضبط صفحه (Screen Recording) و کنترل ماوس/کیبورد (Accessibility)
+          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','$RUSTDESK_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
+          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$RUSTDESK_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
           
-          # اضافه کردن یوزر رانر گیت‌هاب به لایسنس مجاز کنترل سخت‌افزاری
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --ruleadd user=runner class=input service=yes
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --ruleadd user=runner class=audio service=yes
-          
-          # تزریق مستقیم شناسه نوماشین به دیتابیس حریم خصوصی مک (Bypass Screen Recording & Accessibility)
-          NX_PATH="/Library/Application Support/NoMachine/bin/nxserver.bin"
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','$NX_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$NX_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
+          # ریست کردن کش سیستم امنیتی برای اعمال دسترسی‌ها
+          sudo tccutil reset ScreenCapture || true
+          sudo defaults write /Library/Preferences/com.apple.RemoteManagement PrivacyInquiry -bool false || true
 
-          # راه‌اندازی مجدد سرویس نوماشین برای اعمال درایورهای جدید
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --restart
+      # ۴. تنظیم پسورد ثابت و فعال‌سازی سرویس پس‌زمینه RustDesk
+      - name: Start RustDesk Service & Set Password
+        run: |
+          echo "==== Starting RustDesk Service and Setting Password ===="
+          # تنظیم رمز عبور ثابت برای اتصال (مثلاً: mac2026!)
+          sudo /Applications/RustDesk.app/Contents/MacOS/RustDesk --password mac2026! || true
+          
+          # فعال‌سازی قابلیت Direct IP Access (اتصال مستقیم از طریق آی‌پی تیل‌اسکیل بدون نیاز به اینترنت)
+          sudo defaults write com.carriez.RustDesk.plist direct-server y || true
+          
+          # اجرای پروسه اصلی در پس‌زمینه رانر
+          nohup sudo /Applications/RustDesk.app/Contents/MacOS/RustDesk --service > /dev/null 2>&1 &
+          sleep 5
 
-      # ۴. نصب درایور صوتی بومی و مسیردهی صدای دسکتاپ
+      # ۵. نصب درایور صوتی بومی و مسیردهی صدای دسکتاپ
       - name: Install Virtual Audio Driver for Sound
         run: |
           echo "==== Installing BlackHole Audio Driver ===="
           brew install blackhole-2ch
-          
-          # رفرش کردن سیستم صوتی مک
           sudo killall coreaudiod || true
-          sleep 3
-          
-          # مسیردهی کل صدای مک به کارت صدای مجازی جهت ضبط توسط نوماشین (Screen Recording Audio)
+          sleep 2
           sudo SwitchAudioSource -s "BlackHole 2ch" || true
 
-      # ۵. بیدارباش کامل محیط گرافیکی و کپچر سیستم
+      # ۶. بیدارباش کامل محیط گرافیکی و کپچر سیستم (Caffeinate)
       - name: Keep Video Framebuffer Alive
         run: |
           echo "==== Preventing macOS Graphics from Sleeping ===="
           sudo caffeinate -u -d -i -s -t 7200 &
           sleep 2
 
-      # ۶. نمایش اطلاعات اتصال
+      # ۷. نمایش اطلاعات اتصال مستقیم
       - name: Get Connection Details
         run: |
-          echo "==== Ready to Connect via NoMachine ===="
+          echo "==== Ready to Connect via RustDesk ===="
+          echo "------------------------------------------------"
           echo "Tailscale IP: $(tailscale ip -4)"
+          echo "RustDesk Password: mac2026!"
           echo "------------------------------------------------"
-          echo "Mac Username: runner"
-          echo "Mac Password: (Leave Blank / No Password configured by GitHub)"
+          echo "HOW TO CONNECT:"
+          echo "1. Open RustDesk on your local PC."
+          echo "2. In the 'Control Remote Desktop' box, type the Tailscale IP exactly."
+          echo "3. Enter the password 'mac2026!' when prompted."
           echo "------------------------------------------------"
-          echo "1. Open NoMachine Client on your local PC."
-          echo "2. Add a new connection with the Tailscale IP."
-          echo "3. Connect using username 'runner' and empty password."
 
-      # ۷. زنده نگه داشتن رانر
+      # ۸. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
           echo "==== Runner is alive and streaming ===="
