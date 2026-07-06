@@ -5,7 +5,7 @@ on:
 
 jobs:
   macos-desktop:
-    runs-on: avrea-macos-26-16-vcpu 
+    runs-on: namespace-profile-samiyarbig
 
     steps:
       - name: Checkout Repository
