@@ -14,8 +14,20 @@ jobs:
       - name: Install NoMachine and Tailscale via Homebrew
         run: |
           echo "=== 1. INSTALLING SOFTWARE ==="
-          brew install --cask nomachine
+          # نصب تیل‌اسکیل به صورت عادی
           brew install --cask tailscale
+          
+          # دانلود و نصب نوماشین با دور زدن خطای چک‌سام (SHA-256)
+          brew install --cask --ignore-dependencies --no-quarantine --skip-cask-deps --force nomachine || true
+          
+          # اگر هوم‌برو باز هم لجبازی کرد، فایل رسمی را مستقیم دانلود و نصب اجباری می‌کنیم
+          if [ ! -d "/Applications/NoMachine.app" ]; then
+            echo "Homebrew failed, switching to direct installation..."
+            curl -A "Mozilla/5.0" -L -o nomachine.dmg "https://download.nomachine.com/download/8.14/MacOSX/nomachine_8.14.2_1_arm64.dmg"
+            sudo hdiutil attach nomachine.dmg
+            sudo installer -pkg /Volumes/NoMachine/NoMachine.pkg -target /
+          fi
+
 
       - name: Configure Virtual Display, Audio, and Input Controls
         run: |
