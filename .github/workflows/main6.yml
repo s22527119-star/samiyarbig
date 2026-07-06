@@ -36,29 +36,24 @@ jobs:
           echo "==== Downloading and Installing NoMachine ===="
           brew install --cask nomachine
 
-      # ۴. ساخت مانیتور مجازی بومی اپل با اسکریپت Swift (حل قطعی صفحه سیاه)
+      # ۴. دانلود و اجرای درایور نمایشگر مجازی کامپایل‌شده (حل قطعی صفحه سیاه)
       - name: Create Native Apple Virtual Display
         run: |
-          echo "==== Creating Swift Virtual Display Script ===="
-          cat << 'EOF' > create_display.swift
-          import Foundation
-          import CoreGraphics
-
-          // ایجاد یک دیسپلی مجازی بومی روی سستیم‌عامل مک
-          let displayId = CGVirtualDisplay.init()
-          print("Virtual Display Created Successfully!")
+          echo "==== Downloading Pre-compiled Virtual Display Driver ===="
+          # دانلود نسخه کامپایل شده و آماده برای پردازنده‌های اپل سیلیکون (arm64)
+          curl -L -o virtualdisplay "https://raw.githubusercontent.com/waydabber/mac-virtual-display/main/main-arm64"
+          chmod +x virtualdisplay
           
-          // زنده نگه داشتن دیسپلی در پس‌زمینه
-          RunLoop.main.run(until: Date(timeIntervalSinceNow: 7200))
-          EOF
-
-          echo "==== Compiling and Running Virtual Display ===="
-          # کامپایل اسکریپت به باینری بومی مک
-          xcrun -sdk macosx swiftc create_display.swift -o native_display
-          
-          # اجرای مانیتور مجازی در پس‌زمینه
-          ./native_display &
+          echo "==== Activating Virtual Monitor (1080p) ===="
+          # اجرای درایور در پس‌زمینه برای ایجاد یک نمایشگر مجازی واقعی
+          ./virtualdisplay vtarget=1920:1080:60 &
           sleep 5
+          
+          echo "==== Forcing WindowServer to Refresh ===="
+          # شوک به گرافیک برای شناسایی نمایشگر مجازی جدید
+          sudo launchctl kickstart -k system/com.apple.WindowServer || true
+          sleep 5
+
           
           echo "==== Forcing WindowServer to Refresh ===="
           sudo launchctl kickstart -k system/com.apple.WindowServer || true
