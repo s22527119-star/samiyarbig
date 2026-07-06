@@ -5,7 +5,7 @@ on:
 
 jobs:
   macos-desktop:
-    runs-on: namespace-profile-samiyarbig 
+    runs-on: avrea-macos-26-16-vcpu 
 
     steps:
       - name: Checkout Repository
@@ -20,15 +20,23 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. اعطای دسترسی مستقیم Screen Recording به Sunshine در هسته مک
+      # ۲. معرفی مخزن LizardByte و نصب دقیق Sunshine
+      - name: Install Sunshine Server from LizardByte
+        run: |
+          echo "==== Adding LizardByte Tap and Installing Sunshine ===="
+          # اضافه کردن مخزن رسمی سان‌شاین به هوم‌برو
+          brew tap lizardbyte/sunshine
+          # نصب برنامه با آدرس‌دهی دقیق پکیج
+          brew install sunshine
+
+      # ۳. اعطای دسترسی مستقیم Screen Recording به Sunshine در هسته مک
       - name: Bypass Screen Recording Privacy Guards (TCC Injection)
         run: |
           echo "==== Injecting Screen Recording Permissions ===="
-          # پیدا کردن مسیر دقیق باینری Sunshine
+          # پیدا کردن مسیر دقیق باینری Sunshine نصب شده
           SUNSHINE_PATH=$(which sunshine || echo "/opt/homebrew/bin/sunshine")
           
-          # تزریق مستقیم مجوز ضبط صفحه و دسترسی‌های سیستمی به دیتابیس امنیتی مک
-          # این کامند قفل کپچر تصویر و صدای سیستم را باز می‌کند
+          # تزریق مستقیم مجوز ضبط صفحه و دسترسی‌های سیستمی به دیتابیس امنیتی مک ۲۶
           sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','$SUNSHINE_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
           sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$SUNSHINE_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
           
@@ -36,7 +44,7 @@ jobs:
           sudo tccutil reset ScreenCapture || true
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement PrivacyInquiry -bool false || true
 
-      # ۳. نصب و پیکربندی خروجی و ضبط صدا (Screen Recording Audio)
+      # ۴. نصب و پیکربندی خروجی و ضبط صدا (Screen Recording Audio)
       - name: Install and Route Screen Audio Driver
         run: |
           echo "==== Installing BlackHole Audio Driver ===="
@@ -50,7 +58,7 @@ jobs:
           # ست کردن کارت صدای مجازی BlackHole به عنوان خروجی اصلی صدا در مک برای ضبط توسط Sunshine
           sudo SwitchAudioSource -s "BlackHole 2ch" || true
 
-      # ۴. بیدارباش گرافیک و فریم‌بافر دسکتاپ
+      # ۵. بیدارباش گرافیک و فریم‌بافر دسکتاپ
       - name: Configure Virtual Framebuffer
         run: |
           echo "==== Keeping Video Framebuffer Alive ===="
@@ -58,18 +66,15 @@ jobs:
           sudo caffeinate -u -d -i -s -t 7200 &
           sleep 2
 
-      # ۵. نصب و راه‌اندازی سرور استریمینگ Sunshine
-      - name: Install and Start Sunshine
+      # ۶. راه‌اندازی سرور استریمینگ Sunshine
+      - name: Start Sunshine Server
         run: |
-          echo "==== Installing Sunshine Server ===="
-          brew install sunshine
-          
           echo "==== Starting Sunshine with Audio/Video Capture Enabled ===="
-          # اجرای سان‌شاین با دسترسی بالا جهت اعمال دسترسی تصویر و صدا که در مرحله ۲ آزاد کردیم
+          # اجرای سان‌شاین با دسترسی بالا جهت اعمال دسترسی تصویر و صدا
           nohup sudo sunshine > /dev/null 2>&1 &
           sleep 5
 
-      # ۶. نمایش اطلاعات اتصال
+      # ۷. نمایش اطلاعات اتصال
       - name: Get Connection Details
         run: |
           echo "==== Ready to Connect via Sunshine ===="
@@ -80,7 +85,7 @@ jobs:
           echo "2. Create a username and password."
           echo "3. Open 'Moonlight' client on your PC/Phone and enter the IP."
 
-      # ۷. زنده نگه داشتن رانر
+      # ۸. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
           echo "==== Runner is alive and streaming ===="
