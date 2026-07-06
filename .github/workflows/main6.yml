@@ -36,23 +36,30 @@ jobs:
           echo "==== Downloading and Installing NoMachine ===="
           brew install --cask nomachine
 
-      # ۴. ساخت مانیتور مجازی واقعی و بیدار کردن گرافیک مک
+      # ۴. ساخت مانیتور مجازی واقعی با Fluffy و بیدار کردن گرافیک مک
       - name: Create Virtual Display & Wake Graphics
         run: |
-          echo "==== Downloading Virtual Display Driver ===="
-          # دانلود یک باینری آماده برای ساخت مانیتور مجازی در مک
-          curl -L -o virtualdisplay https://github.com/waydabber/mac-virtual-display/releases/latest/download/main-arm64
-          chmod +x virtualdisplay
-          
-          echo "==== Activating Virtual Monitor (1080p) ===="
-          # اجرای درایور در پس‌زمینه برای ایجاد یک مانیتور مجازی ۱920x1080
-          ./virtualdisplay vtarget=1920:1080:60 &
-          sleep 5
+          echo "==== Installing Fluffy (BetterDisplay CLI) ===="
+          # نصب ابزار رسمی مدیریت دیسپلی مجازی مک
+          brew install waydabber/betterdisplay/fluffy
+
+          echo "==== Creating and Activating Virtual Monitor ===="
+          # ساخت یک مانیتور مجازی جدید با رزولوشن 1920x1080
+          sudo fluffy virtual-display create -width=1920 -height=1080 -refresh=60 || true
+          sleep 3
           
           echo "==== Forcing WindowServer to Refresh ===="
-          # حالا که مانیتور مجازی فعال شده، به گرافیک شوک می‌دهیم تا تصویر را رندر کند
+          # شوک به گرافیک برای شناسایی دیسپلی جدید و رندر کردن دسکتاپ
           sudo launchctl kickstart -k system/com.apple.WindowServer || true
           sleep 1
+
+      # ۵. راه‌اندازی مجدد سرویس NoMachine جهت همگام‌سازی با مانیتور جدید
+      - name: Configure and Start NoMachine Server
+        run: |
+          echo "==== Restarting NX Service ===="
+          sudo /etc/NX/nxserver --restart
+          sudo /etc/NX/nxserver --status
+
 
 
       # ۵. راه‌اندازی مجدد سرویس NoMachine جهت همگام‌سازی با مانیتور جدید
