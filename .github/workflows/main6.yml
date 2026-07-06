@@ -1,4 +1,4 @@
-name: Hosted macOS 16vCPU (RustDesk + Tailscale Fix v3)
+name: Hosted macOS 16vCPU (Native Apple Remote + Audio Fix)
 
 on:
   workflow_dispatch:
@@ -20,65 +20,56 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. نصب RustDesk و ابزارهای صوتی با نام اصلاح شده (switchaudio-osx)
-      - name: Install RustDesk and Audio Utilities via Homebrew
+      # ۲. فعال‌سازی ریموت دسکتاپ بومی اپل (Screen Sharing / VNC) با دسترسی کامل
+      - name: Enable Native Apple Remote Desktop & Inputs
         run: |
-          echo "==== Installing RustDesk and Tools ===="
-          brew install --cask rustdesk || true
-          brew install blackhole-2ch || true
+          echo "==== Activating Apple Remote Management ===="
+          # ایجاد یک پسورد ادمین برای یوزر runner جهت لاگین از راه دور
+          sudo dscl . -passwd /Users/runner mac2026! || echo "runner" | sudo passwd runner
           
-          # نصب با نام دقیق و درست برای رفع ارور گیت‌هاب
-          brew install switchaudio-osx
+          # فعال‌سازی سرویس بومی ریموت دسکتاپ اپل با تمام دسترسی‌های کیبورد، ماوس و تصویر
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -access -on \
+            -clientopts -setvncpasswd -vncpasswd mac2026! \
+            -privs -all -restart -agent -menu
+
+      # ۳. نصب درایور صوتی بومی و مسیردهی صدای دسکتاپ
+      - name: Install Virtual Audio Driver for Sound
+        run: |
+          echo "==== Installing BlackHole Audio Driver ===="
+          brew install blackhole-2ch || true
+          brew install switchaudio-osx || true
           
           # رفرش کردن سیستم صوتی مک
           sudo killall coreaudiod || true
           sleep 3
-
-      # ۳. تنظیم پسورد و فعال‌سازی سرویس پس‌زمینه RustDesk
-      - name: Configure RustDesk & macOS Permissions
-        run: |
-          echo "==== Configuring RustDesk and Accessibility ===="
-          sudo defaults write /Library/Preferences/com.apple.RemoteManagement PrivacyInquiry -bool false || true
           
-          # تنظیم رمز عبور ثابت برای اتصال مستقیم
-          sudo /Applications/RustDesk.app/Contents/MacOS/RustDesk --password mac2026! || true
-          
-          # فعال‌سازی قابلیت اتصال مستقیم با آی‌پي (Direct IP Access)
-          sudo defaults write com.carriez.RustDesk.plist direct-server y || true
-          
-          # اجرای RustDesk در سطح سیستم (بدون قفل شدن ترمینال)
-          nohup sudo /Applications/RustDesk.app/Contents/MacOS/RustDesk --service > /dev/null 2>&1 &
-          sleep 5
-
-      # ۴. مسیردهی صدای دسکتاپ به کارت صدای مجازی با دستور اصلاح شده
-      - name: Route Screen Audio to Virtual Driver
-        run: |
-          echo "==== Routing macOS System Audio ===="
-          # استفاده از دستور دقیق پکیج switchaudio-osx برای انتقال صدا به لایه ضبط راست‌دسک
+          # مسیردهی کل صدای مک به کارت صدای مجازی جهت کپچر صوتی
           SwitchAudioSource -s "BlackHole 2ch" || true
 
-      # ۵. بیدارباش کامل محیط گرافیکی و کپچر سیستم (Caffeinate)
+      # ۴. بیدارباش کامل محیط گرافیکی و کپچر سیستم (Caffeinate)
       - name: Keep Video Framebuffer Alive
         run: |
           echo "==== Preventing macOS Graphics from Sleeping ===="
           sudo caffeinate -u -d -i -s -t 7200 &
           sleep 2
 
-      # ۶. نمایش اطلاعات اتصال مستقیم
+      # ۵. نمایش اطلاعات اتصال مستقیم با آی‌پی
       - name: Get Connection Details
         run: |
-          echo "==== Ready to Connect via RustDesk ===="
+          echo "==== Ready to Connect via Apple Screen Sharing / VNC ===="
           echo "------------------------------------------------"
           echo "Tailscale IP: $(tailscale ip -4)"
-          echo "RustDesk Password: mac2026!"
+          echo "Username: runner"
+          echo "Password: mac2026!"
+          echo "VNC Password: mac2026!"
           echo "------------------------------------------------"
           echo "HOW TO CONNECT:"
-          echo "1. Open RustDesk on your local PC."
-          echo "2. In the 'Control Remote Desktop' box, type the Tailscale IP exactly."
-          echo "3. Enter the password 'mac2026!' when prompted."
+          echo "If you are on a Mac: Open 'Screen Sharing' app and enter the Tailscale IP."
+          echo "If you are on Windows: Open any VNC Client (like RealVNC Viewer or TightVNC) and enter: TAILSCALE_IP:5900"
           echo "------------------------------------------------"
 
-      # ۷. زنده نگه داشتن رانر
+      # ۶. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
           echo "==== Runner is alive and streaming ===="
