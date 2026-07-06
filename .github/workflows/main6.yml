@@ -1,4 +1,4 @@
-name: Hosted macOS 16vCPU (RustDesk + Tailscale Fix)
+name: Hosted macOS 16vCPU (RustDesk + Tailscale Fix v2)
 
 on:
   workflow_dispatch:
@@ -20,58 +20,50 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. نصب راحت و تمیز RustDesk از طریق هوم‌برو
-      - name: Install RustDesk via Homebrew
+      # ۲. نصب RustDesk و ابزارهای صوتی از طریق هوم‌برو (اضافه شدن switch-audio-o)
+      - name: Install RustDesk and Audio Utilities via Homebrew
         run: |
-          echo "==== Installing RustDesk ===="
+          echo "==== Installing RustDesk and Tools ===="
           brew install --cask rustdesk
+          brew install blackhole-2ch
+          brew install switch-audio-o # رفع ارور SwitchAudioSource: command not found
+          
+          # رفرش کردن سیستم صوتی مک برای شناسایی کارت صدای مجازی
+          sudo killall coreaudiod || true
+          sleep 3
 
-      # ۳. اعطای دسترسی‌های ضبط صفحه، ماوس و کیبورد به RustDesk در مک ۲۶ Tahoe
-      - name: Configure macOS Privacy for RustDesk (TCC Bypass)
+      # ۳. باز کردن مجوزها از طریق راه‌اندازی رسمی و بومی RustDesk
+      - name: Configure RustDesk & macOS Permissions
         run: |
-          echo "==== Injecting RustDesk Permissions into Tahoe TCC ===="
-          # پیدا کردن مسیر دقیق باینری RustDesk
-          RUSTDESK_PATH="/Applications/RustDesk.app/Contents/MacOS/RustDesk"
-          
-          # تزریق مستقیم مجوز ضبط صفحه (Screen Recording) و کنترل ماوس/کیبورد (Accessibility)
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','$RUSTDESK_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$RUSTDESK_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
-          
-          # ریست کردن کش سیستم امنیتی برای اعمال دسترسی‌ها
-          sudo tccutil reset ScreenCapture || true
+          echo "==== Configuring RustDesk and Accessibility ===="
+          # فعال‌سازی دسترسی مدیریت از راه دور سیستم بدون نیاز به تایید پاپ‌آپ
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement PrivacyInquiry -bool false || true
-
-      # ۴. تنظیم پسورد ثابت و فعال‌سازی سرویس پس‌زمینه RustDesk
-      - name: Start RustDesk Service & Set Password
-        run: |
-          echo "==== Starting RustDesk Service and Setting Password ===="
-          # تنظیم رمز عبور ثابت برای اتصال (مثلاً: mac2026!)
+          
+          # تنظیم رمز عبور ثابت برای اتصال مستقیم
           sudo /Applications/RustDesk.app/Contents/MacOS/RustDesk --password mac2026! || true
           
-          # فعال‌سازی قابلیت Direct IP Access (اتصال مستقیم از طریق آی‌پی تیل‌اسکیل بدون نیاز به اینترنت)
+          # فعال‌سازی قابلیت اتصال مستقیم با آی‌پي (Direct IP Access)
           sudo defaults write com.carriez.RustDesk.plist direct-server y || true
           
-          # اجرای پروسه اصلی در پس‌زمینه رانر
+          # اجرای RustDesk در سطح سیستم (این دستور در نسخه Tahoe به طور خودکار دسترسی‌های لازم را می‌گیرد)
           nohup sudo /Applications/RustDesk.app/Contents/MacOS/RustDesk --service > /dev/null 2>&1 &
           sleep 5
 
-      # ۵. نصب درایور صوتی بومی و مسیردهی صدای دسکتاپ
-      - name: Install Virtual Audio Driver for Sound
+      # ۴. مسیردهی صدای دسکتاپ به کارت صدای مجازی
+      - name: Route Screen Audio to Virtual Driver
         run: |
-          echo "==== Installing BlackHole Audio Driver ===="
-          brew install blackhole-2ch
-          sudo killall coreaudiod || true
-          sleep 2
-          sudo SwitchAudioSource -s "BlackHole 2ch" || true
+          echo "==== Routing macOS System Audio ===="
+          # حالا چون در مرحله ۲ این ابزار را نصب کردیم، دیگر ارور command not found نمی‌دهد
+          SwitchAudioSource -s "BlackHole 2ch" || true
 
-      # ۶. بیدارباش کامل محیط گرافیکی و کپچر سیستم (Caffeinate)
+      # ۵. بیدارباش کامل محیط گرافیکی و کپچر سیستم (Caffeinate)
       - name: Keep Video Framebuffer Alive
         run: |
           echo "==== Preventing macOS Graphics from Sleeping ===="
           sudo caffeinate -u -d -i -s -t 7200 &
           sleep 2
 
-      # ۷. نمایش اطلاعات اتصال مستقیم
+      # ۶. نمایش اطلاعات اتصال مستقیم
       - name: Get Connection Details
         run: |
           echo "==== Ready to Connect via RustDesk ===="
@@ -85,7 +77,7 @@ jobs:
           echo "3. Enter the password 'mac2026!' when prompted."
           echo "------------------------------------------------"
 
-      # ۸. زنده نگه داشتن رانر
+      # ۷. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
           echo "==== Runner is alive and streaming ===="
