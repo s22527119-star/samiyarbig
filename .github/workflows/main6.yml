@@ -1,84 +1,79 @@
-name: Hosted macOS 16vCPU Environment (NoMachine Fix)
+name: macOS Tahoe Remote Desktop (NoMachine + Tailscale)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # اجرای دستی ورک‌فلو از پنل گیت‌هاب
 
 jobs:
-  macos-desktop:
-    runs-on: namespace-profile-samiyarbig
-
+  setup-remote-desktop:
+    runs-on: namespace-profile-samiyarbig # اجرای روی جدیدترین نسخه مک‌او‌اس ارائه شده توسط گیت‌هاب
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. راه‌اندازی شبکه Tailscale
-      - name: Install and Connect Tailscale
+      - name: Install NoMachine and Tailscale via Homebrew
         run: |
-          echo "==== Installing Tailscale ===="
-          brew install tailscale
-          sudo brew services start tailscale
-          sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
-
-      # ۲. ساخت کاربر ادمین برای سیستم
-      - name: Create macOS User
-        run: |
-          echo "==== Creating GUI User ===="
-          sudo sysadminctl -addUser nxuser -fullName "NoMachine Admin" -password "mac2026!" -admin
-          sudo dscl . -create /Users/nxuser IsHidden 0
-          
-          # جلوگیری از به خواب رفتن دیسپلی و هارد
-          sudo pmset -a displaysleep 0 sleep 0 disksleep 0
-
-      # ۳. نصب NoMachine
-      - name: Install NoMachine
-        run: |
-          echo "==== Downloading and Installing NoMachine ===="
+          echo "=== 1. INSTALLING SOFTWARE ==="
           brew install --cask nomachine
+          brew install --cask tailscale
 
-      # ۴. فعال‌سازی مانیتور مجازی با ابزار بومی و پیش‌فرض مک (حل قطعی ارور)
-      - name: Activate Native macOS Virtual Display
+      - name: Configure Virtual Display, Audio, and Input Controls
         run: |
-          echo "==== Activating Built-in macOS Framebuffer ===="
-          # تنظیم رزولوشن دسکتاپ مجازی به صورت مستقیم در سیستم‌عامل
-          sudo defaults write /Library/Preferences/com.apple.windowserver.plist DisplayResolutionEnabled -bool true
+          echo "=== 2. CONFIGURING NOMACHINE FOR GITHUB ACTIONS RUNNER ==="
+          # تعریف ابعاد مانیتور مجازی برای جلوگیری از سیاه شدن صفحه
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey ScreenResolution 1920x1080
           
-          echo "==== Starting CoreGraphics Virtual Session ===="
-          # نسخه اصلاح‌شده: اجرای ابزار مدیریت ریموت دسکتاپ بومی اپل برای بالا آوردن محیط گرافیکی
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on
+          # ایجاد کارت گرافیک و مانیتور مجازی مجزا در هسته سیستم‌عامل
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --virtualdisplay add --shared
           
-          echo "==== Forcing WindowServer to Boot GUI ===="
-          # ری‌استارت و شوک به گرافیک برای لود کامل دسکتاپ
-          sudo launchctl kickstart -k system/com.apple.WindowServer || true
+          # فعال‌سازی و اعطای دسترسی‌های کامل به کیبورد، ماوس و استریم صدا
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey PhysicalDisplayAllowVirtualInbound yes
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey EnableUserInterface yes
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey EnableAudioStreaming yes
+          
+          # اضافه کردن یوزر رانر گیت‌هاب به لیست مجاز ورودی‌های سخت‌افزاری نوماشین
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --ruleadd user=runner class=input service=yes
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --ruleadd user=runner class=audio service=yes
+          
+          # راه اندازی مجدد سرویس برای بارگذاری درایورهای صوتی و تصویری مجازی
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --restart
+
+      - name: Prevent macOS Virtual Graphics from Sleeping
+        run: |
+          echo "=== 3. KEEPING GRAPHICS FRAMEBUFFER ALIVE ==="
+          # بیدار نگه داشتن دسکتاپ مجازی مک به مدت ۶ ساعت (۲۱۶۰۰ ثانیه) در پس‌زمینه
+          sudo caffeinate -u -d -t 21600 &
+
+      - name: Start and Authenticate Tailscale Network
+        env:
+          # اختیاری: اگر می‌خواهی بدون کلیک روی لینک متصل شوی، یک Auth Key از پنل تیل‌اسکیل بساز و در Secrets گیت‌هاب ست کن.
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          echo "=== 4. LAUNCHING TAILSCALE ==="
+          # اجرای دیمون اصلی تیل‌اسکیل
+          sudo open -a Tailscale --args --no-window
           sleep 5
-   
-      # ۵. راه‌اندازی مجدد سرویس NoMachine جهت همگام‌سازی با مانیتور جدید
-      - name: Configure and Start NoMachine Server
+          
+          # اتصال به شبکه؛ اگر Auth Key وجود داشته باشد خودکار متصل می‌شود، در غیر این صورت لینک لاگین چاپ می‌شود
+          if [ -z "$TAILSCALE_AUTH_KEY" ]; then
+            echo "Please click the link below to authenticate the runner:"
+            sudo tailscale up
+          else
+            sudo tailscale up --authkey=$TAILSCALE_AUTH_KEY
+          fi
+
+      - name: Output Connection Details and Keep Alive
         run: |
-          echo "==== Restarting NX Service ===="
-          sudo /etc/NX/nxserver --restart
-          sudo /etc/NX/nxserver --status
-
-
-
-      # ۵. راه‌اندازی مجدد سرویس NoMachine جهت همگام‌سازی با مانیتور جدید
-      - name: Configure and Start NoMachine Server
-        run: |
-          echo "==== Restarting NX Service ===="
-          sudo /etc/NX/nxserver --restart
-          sudo /etc/NX/nxserver --status
-
-      # ۶. اطلاعات اتصال
-      - name: Get Connection Details
-        run: |
-          echo "==== Ready to Connect ===="
-          echo "Tailscale IP: $(tailscale ip -4)"
-          echo "Port: 4000"
-          echo "Username: nxuser"
-          echo "Password: mac2026!"
-
-      # ۷. زنده نگه داشتن رانر
-      - name: Keep Runner Alive
-        run: |
-          sleep 7200
+          echo "=== 5. CONNECTION DETAILS ==="
+          echo "----------------------------------------"
+          echo "Your Tailscale IPv4 address is:"
+          tailscale ip -4
+          echo "----------------------------------------"
+          echo "Mac Username: runner"
+          echo "Mac Password: (Leave Blank / No Password configured by GitHub)"
+          echo "----------------------------------------"
+          echo "The workflow will remain active for 5 hours. Close it manually from GitHub when finished."
+          
+          # زنده نگه داشتن کل ورک‌فلو به مدت ۵ ساعت جهت ریموت زدن شما
+          sleep 18000
           
