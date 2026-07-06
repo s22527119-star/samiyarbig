@@ -36,25 +36,22 @@ jobs:
           echo "==== Downloading and Installing NoMachine ===="
           brew install --cask nomachine
 
-      # ۴. فعال‌سازی مانیتور مجازی با ابزار بومی و پیش‌فرض مک (نسخه اصلاح شده)
+      # ۴. فعال‌سازی مانیتور مجازی با ابزار بومی و پیش‌فرض مک (حل قطعی ارور)
       - name: Activate Native macOS Virtual Display
         run: |
           echo "==== Activating Built-in macOS Framebuffer ===="
-          # تنظیم رزولوشن دسکتاپ مجازی به صورت مستقیم در ساختار سیستم‌عامل
+          # تنظیم رزولوشن دسکتاپ مجازی به صورت مستقیم در سیستم‌عامل
           sudo defaults write /Library/Preferences/com.apple.windowserver.plist DisplayResolutionEnabled -bool true
           
           echo "==== Starting CoreGraphics Virtual Session ===="
-          # رفع خطای سینتکس: اجرای شبیه‌ساز نمایشگر بومی اپل در پس‌زمینه
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Support/InactivityLogoutHander &
-          sleep 3
+          # نسخه اصلاح‌شده: اجرای ابزار مدیریت ریموت دسکتاپ بومی اپل برای بالا آوردن محیط گرافیکی
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on
           
           echo "==== Forcing WindowServer to Boot GUI ===="
           # ری‌استارت و شوک به گرافیک برای لود کامل دسکتاپ
           sudo launchctl kickstart -k system/com.apple.WindowServer || true
           sleep 5
-
-
-      
+   
       # ۵. راه‌اندازی مجدد سرویس NoMachine جهت همگام‌سازی با مانیتور جدید
       - name: Configure and Start NoMachine Server
         run: |
