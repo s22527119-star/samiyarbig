@@ -5,14 +5,10 @@ on:
 
 jobs:
   macos:
-    name: "Run on the fastest infrastructure"
-    runs-on: ghcr.io/cirruslabs/macos-runner:tahoe
+    name: "macos m4 apple silicon"
+    runs-on: getmac
     steps:
       - uses: actions/checkout@v4
-      - name: List Installed Xcodes
-        run: xcodes installed
-      - name: Select Xcode 16.2
-        run: sudo xcodes select 16.2
 
       # ۱. اتصال به Tailscale
       - name: Install and Connect Tailscale
