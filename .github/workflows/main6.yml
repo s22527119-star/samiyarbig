@@ -1,4 +1,4 @@
-name: Hosted macOS 16vCPU (Native Apple Remote + Audio Fix)
+name: Hosted macOS 16vCPU (Native Apple Remote + Audio Fix v2)
 
 on:
   workflow_dispatch:
@@ -20,56 +20,86 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. فعال‌سازی ریموت دسکتاپ بومی اپل (Screen Sharing / VNC) با دسترسی کامل
-      - name: Enable Native Apple Remote Desktop & Inputs
+      # ۲. ساخت یک یوزر اختصاصی جدید بدون نیاز به پسورد قبلی رانر
+      - name: Create Dedicated Remote User
         run: |
-          echo "==== Activating Apple Remote Management ===="
-          # ایجاد یک پسورد ادمین برای یوزر runner جهت لاگین از راه دور
-          sudo dscl . -passwd /Users/runner mac2026! || echo "runner" | sudo passwd runner
+          echo "==== Creating Remote User 'samiyar' ===="
+          # پاک کردن یوزر اگر از قبل وجود داشته باشد برای جلوگیری از تداخل
+          sudo dscl . -delete /Users/samiyar || true
           
-          # فعال‌سازی سرویس بومی ریموت دسکتاپ اپل با تمام دسترسی‌های کیبورد، ماوس و تصویر
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -activate -configure -access -on \
-            -clientopts -setvncpasswd -vncpasswd mac2026! \
-            -privs -all -restart -agent -menu
+          # ساخت یوزر جدید به نام samiyar
+          sudo dscl . -create /Users/samiyar
+          sudo dscl . -create /Users/samiyar UserShell /bin/zsh
+          sudo dscl . -create /Users/samiyar RealName "Samiyar Big"
+          sudo dscl . -create /Users/samiyar UniqueID "555"
+          sudo dscl . -create /Users/samiyar PrimaryGroupID 20
+          sudo dscl . -create /Users/samiyar NFSHomeDirectory /Users/samiyar
+          
+          # ست کردن پسورد مستقیم و اجباری برای یوزر جدید
+          sudo dscl . -passwd /Users/samiyar mac2026!
+          
+          # اضافه کردن یوزر جدید به گروه ادمین‌ها برای داشتن دسترسی کامل ریموت
+          sudo dscl . -append /Groups/admin GroupMembership samiyar
+          
+          # ساخت فولدر خانگی برای یوزر جدید
+          sudo mkdir -p /Users/samiyar
+          sudo chown -R samiyar:staff /Users/samiyar
 
-      # ۳. نصب درایور صوتی بومی و مسیردهی صدای دسکتاپ
-      - name: Install Virtual Audio Driver for Sound
+      # ۳. فعال‌سازی ریموت دسکتاپ با سینتکس دقیق و تصحیح‌شده kickstart
+      - name: Enable Native Apple Remote Desktop & VNC
         run: |
-          echo "==== Installing BlackHole Audio Driver ===="
+          echo "==== Activating Apple Remote Management with Correct Options ===="
+          
+          # فعال‌سازی اولیه سرویس ریموت
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
+          
+          # تنظیم دسترسی کامل برای همه یوزرها به خصوص یوزر جدیدی که ساختیم
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -allowAccessFor -allUsers -privs -all
+          
+          # تنظیم پسورد VNC با آرگومان‌های کاملاً دقیق طبق هلپ سیستم شما (-setvncpw -vncpw)
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -clientopts -setvnclegacy yes -setvncpw yes -vncpw mac2026!
+          
+          # ری‌استارت نهایی دیمون ریموت دسکتاپ
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+
+      # ۴. نصب ابزارهای صوتی
+      - name: Install Audio Utilities via Homebrew
+        run: |
+          echo "==== Installing Audio Tools ===="
           brew install blackhole-2ch || true
           brew install switchaudio-osx || true
           
-          # رفرش کردن سیستم صوتی مک
           sudo killall coreaudiod || true
           sleep 3
           
-          # مسیردهی کل صدای مک به کارت صدای مجازی جهت کپچر صوتی
+          # انتقال خروجی صدا به کارت صدای مجازی
           SwitchAudioSource -s "BlackHole 2ch" || true
 
-      # ۴. بیدارباش کامل محیط گرافیکی و کپچر سیستم (Caffeinate)
+      # ۵. بیدارباش کامل محیط گرافیکی و کپچر سیستم (Caffeinate)
       - name: Keep Video Framebuffer Alive
         run: |
           echo "==== Preventing macOS Graphics from Sleeping ===="
           sudo caffeinate -u -d -i -s -t 7200 &
           sleep 2
 
-      # ۵. نمایش اطلاعات اتصال مستقیم با آی‌پی
+      # ۶. نمایش اطلاعات اتصال مستقیم با آی‌پي تیل‌اسکیل
       - name: Get Connection Details
         run: |
           echo "==== Ready to Connect via Apple Screen Sharing / VNC ===="
           echo "------------------------------------------------"
           echo "Tailscale IP: $(tailscale ip -4)"
-          echo "Username: runner"
+          echo "Username: samiyar"
           echo "Password: mac2026!"
           echo "VNC Password: mac2026!"
           echo "------------------------------------------------"
           echo "HOW TO CONNECT:"
           echo "If you are on a Mac: Open 'Screen Sharing' app and enter the Tailscale IP."
-          echo "If you are on Windows: Open any VNC Client (like RealVNC Viewer or TightVNC) and enter: TAILSCALE_IP:5900"
+          echo "If you are on Windows: Open VNC Viewer (RealVNC/TightVNC) and enter: TAILSCALE_IP:5900"
           echo "------------------------------------------------"
 
-      # ۶. زنده نگه داشتن رانر
+      # ۷. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
           echo "==== Runner is alive and streaming ===="
