@@ -1,11 +1,11 @@
-name: Hosted macOS 16vCPU (Sunshine Audio/Video Fix)
+name: Hosted macOS 16vCPU (NoMachine Audio/Video Fix)
 
 on:
   workflow_dispatch:
 
 jobs:
   macos-desktop:
-    runs-on: avrea-macos-26-16-vcpu 
+    runs-on: namespace-profile-samiyarbig # رانر اختصاصی جدید شما
 
     steps:
       - name: Checkout Repository
@@ -20,72 +20,75 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. معرفی مخزن LizardByte و نصب دقیق Sunshine
-      - name: Install Sunshine Server from LizardByte
+      # ۲. دانلود و نصب مطمئن NoMachine (دور زدن ارور چک‌سام هوم‌برو)
+      - name: Install NoMachine Server
         run: |
-          echo "==== Adding LizardByte Tap and Installing Sunshine ===="
-          # اضافه کردن مخزن رسمی سان‌شاین به هوم‌برو
-          brew tap lizardbyte/sunshine
-          # نصب برنامه با آدرس‌دهی دقیق پکیج
-          brew install sunshine
+          echo "==== Downloading and Installing NoMachine ===="
+          # دانلود مستقیم از سرور رسمی برای جلوگیری از ارورهای SHA-256 هوم‌برو
+          curl -A "Mozilla/5.0" -L -o nomachine.dmg "https://download.nomachine.com/download/8.14/MacOSX/nomachine_8.14.2_1_arm64.dmg"
+          sudo hdiutil attach nomachine.dmg
+          sudo installer -pkg /Volumes/NoMachine/NoMachine.pkg -target /
+          echo "NoMachine Installed Successfully."
 
-      # ۳. اعطای دسترسی مستقیم Screen Recording به Sunshine در هسته مک
-      - name: Bypass Screen Recording Privacy Guards (TCC Injection)
+      # ۳. اعطای دسترسی‌های کامل تصویری، صوتی و حرکتی به NoMachine در مک ۲۶ Tahoe
+      - name: Configure NoMachine Permissions & Virtual Display
         run: |
-          echo "==== Injecting Screen Recording Permissions ===="
-          # پیدا کردن مسیر دقیق باینری Sunshine نصب شده
-          SUNSHINE_PATH=$(which sunshine || echo "/opt/homebrew/bin/sunshine")
+          echo "==== Configuring macOS Graphics and Inputs for NoMachine ===="
+          # ایجاد کارت گرافیک و مانیتور مجازی در هسته رانر (حل مشکل سیاه شدن صفحه)
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey ScreenResolution 1920x1080
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --virtualdisplay add --shared
           
-          # تزریق مستقیم مجوز ضبط صفحه و دسترسی‌های سیستمی به دیتابیس امنیتی مک ۲۶
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','$SUNSHINE_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$SUNSHINE_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
+          # فعال‌سازی و باز کردن قفل ورودی‌های کیبورد، ماوس و استریم صدا بدون نیاز به مانیتور فیزیکی
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey PhysicalDisplayAllowVirtualInbound yes
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey EnableUserInterface yes
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey EnableAudioStreaming yes
           
-          # اعمال و رفرش کردن دسترسی‌های جدید سیستم‌عامل Tahoe
-          sudo tccutil reset ScreenCapture || true
-          sudo defaults write /Library/Preferences/com.apple.RemoteManagement PrivacyInquiry -bool false || true
+          # اضافه کردن یوزر رانر گیت‌هاب به لایسنس مجاز کنترل سخت‌افزاری
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --ruleadd user=runner class=input service=yes
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --ruleadd user=runner class=audio service=yes
+          
+          # تزریق مستقیم شناسه نوماشین به دیتابیس حریم خصوصی مک (Bypass Screen Recording & Accessibility)
+          NX_PATH="/Library/Application Support/NoMachine/bin/nxserver.bin"
+          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','$NX_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
+          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$NX_PATH',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
 
-      # ۴. نصب و پیکربندی خروجی و ضبط صدا (Screen Recording Audio)
-      - name: Install and Route Screen Audio Driver
+          # راه‌اندازی مجدد سرویس نوماشین برای اعمال درایورهای جدید
+          sudo /Library/Application\ Support/NoMachine/bin/nxserver --restart
+
+      # ۴. نصب درایور صوتی بومی و مسیردهی صدای دسکتاپ
+      - name: Install Virtual Audio Driver for Sound
         run: |
           echo "==== Installing BlackHole Audio Driver ===="
           brew install blackhole-2ch
           
-          # بیدار کردن و لود مجدد سیستم صوتی مک
+          # رفرش کردن سیستم صوتی مک
           sudo killall coreaudiod || true
           sleep 3
           
-          echo "==== Routing macOS System Audio to Virtual Driver ===="
-          # ست کردن کارت صدای مجازی BlackHole به عنوان خروجی اصلی صدا در مک برای ضبط توسط Sunshine
+          # مسیردهی کل صدای مک به کارت صدای مجازی جهت ضبط توسط نوماشین (Screen Recording Audio)
           sudo SwitchAudioSource -s "BlackHole 2ch" || true
 
-      # ۵. بیدارباش گرافیک و فریم‌بافر دسکتاپ
-      - name: Configure Virtual Framebuffer
+      # ۵. بیدارباش کامل محیط گرافیکی و کپچر سیستم
+      - name: Keep Video Framebuffer Alive
         run: |
-          echo "==== Keeping Video Framebuffer Alive ===="
-          # بیدار نگه داشتن دسکتاپ و سیستم کپچر تصویر
+          echo "==== Preventing macOS Graphics from Sleeping ===="
           sudo caffeinate -u -d -i -s -t 7200 &
           sleep 2
 
-      # ۶. راه‌اندازی سرور استریمینگ Sunshine
-      - name: Start Sunshine Server
-        run: |
-          echo "==== Starting Sunshine with Audio/Video Capture Enabled ===="
-          # اجرای سان‌شاین با دسترسی بالا جهت اعمال دسترسی تصویر و صدا
-          nohup sudo sunshine > /dev/null 2>&1 &
-          sleep 5
-
-      # ۷. نمایش اطلاعات اتصال
+      # ۶. نمایش اطلاعات اتصال
       - name: Get Connection Details
         run: |
-          echo "==== Ready to Connect via Sunshine ===="
+          echo "==== Ready to Connect via NoMachine ===="
           echo "Tailscale IP: $(tailscale ip -4)"
-          echo "Sunshine Web UI: https://$(tailscale ip -4):47990"
           echo "------------------------------------------------"
-          echo "1. Open the Web UI link in your browser."
-          echo "2. Create a username and password."
-          echo "3. Open 'Moonlight' client on your PC/Phone and enter the IP."
+          echo "Mac Username: runner"
+          echo "Mac Password: (Leave Blank / No Password configured by GitHub)"
+          echo "------------------------------------------------"
+          echo "1. Open NoMachine Client on your local PC."
+          echo "2. Add a new connection with the Tailscale IP."
+          echo "3. Connect using username 'runner' and empty password."
 
-      # ۸. زنده نگه داشتن رانر
+      # ۷. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
           echo "==== Runner is alive and streaming ===="
