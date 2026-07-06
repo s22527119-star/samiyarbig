@@ -1,4 +1,4 @@
-name: Hosted macOS 16vCPU Environment (NoMachine)
+name: Hosted macOS 16vCPU Environment (NoMachine Fix)
 
 on:
   workflow_dispatch:
@@ -11,61 +11,64 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. راه‌اندازی شبکه Tailscale (امن‌ترین مسیر برای NoMachine)
+      # ۱. راه‌اندازی شبکه Tailscale
       - name: Install and Connect Tailscale
         run: |
           echo "==== Installing Tailscale ===="
           brew install tailscale
           sudo brew services start tailscale
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
-          
-          echo "==== Connecting to Tailscale ===="
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. ساخت کاربر برای مک و NoMachine
+      # ۲. ساخت کاربر ادمین برای سیستم
       - name: Create macOS User
         run: |
           echo "==== Creating GUI User ===="
-          # ساخت یوزر ادمین جدید برای لاگین
           sudo sysadminctl -addUser nxuser -fullName "NoMachine Admin" -password "mac2026!" -admin
           sudo dscl . -create /Users/nxuser IsHidden 0
           
-          # خاموش کردن خواب سیستم
+          # جلوگیری از به خواب رفتن دیسپلی و هارد
           sudo pmset -a displaysleep 0 sleep 0 disksleep 0
 
-      # ۳. نصب NoMachine از طریق Homebrew Cask
+      # ۳. نصب NoMachine
       - name: Install NoMachine
         run: |
           echo "==== Downloading and Installing NoMachine ===="
           brew install --cask nomachine
 
-      # ۴. راه‌اندازی و ری‌استارت سرویس NX Server
-      - name: Configure NoMachine Server
+      # ۴. ساخت مانیتور مجازی و بیدار کردن گرافیک مک (حل مشکل صفحه سیاه)
+      - name: Create Virtual Display & Wake Graphics
+        run: |
+          echo "==== Installing Display Placer ===="
+          brew tap jakehilborn/jakehilborn
+          brew install displayplacer
+          
+          echo "==== Forcing WindowServer to Initialize Virtual Screen ===="
+          # فعال‌سازی یک مانیتور مجازی استاندارد
+          displayplacer "res:1920x1080 hz:60 color_depth:8" || true
+          
+          # شوک به موتور گرافیکی برای اعمال مانیتور جدید
+          sudo launchctl kickstart -k system/com.apple.WindowServer || true
+          sleep 5
+
+      # ۵. راه‌اندازی مجدد سرویس NoMachine جهت همگام‌سازی با مانیتور جدید
+      - name: Configure and Start NoMachine Server
         run: |
           echo "==== Restarting NX Service ===="
-          # اطمینان از اینکه سرویس بعد از نصب روی آی‌پی تیل‌اسکیل گوش می‌دهد
           sudo /etc/NX/nxserver --restart
           sudo /etc/NX/nxserver --status
-
-      # ۵. بیدار نگه داشتن دیسپلی
-      - name: Prevent Sleep
-        run: |
-          echo "==== Forcing macOS to stay awake ===="
-          sudo caffeinate -disu &
 
       # ۶. اطلاعات اتصال
       - name: Get Connection Details
         run: |
           echo "==== Ready to Connect ===="
           echo "Tailscale IP: $(tailscale ip -4)"
-          echo "Port: 4000 (Default)"
-          echo "-----------------------------------"
+          echo "Port: 4000"
           echo "Username: nxuser"
           echo "Password: mac2026!"
 
       # ۷. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
-          echo "Runner is perfectly running. Open NoMachine Player and connect!"
           sleep 7200
           
