@@ -1,11 +1,11 @@
-name: Hosted macOS Tahoe 26 (Avrea Precision TCC Fix)
+name: Hosted macOS Tahoe 26 (Ultimate Headless & NoMachine Fix)
 
 on:
   workflow_dispatch:
 
 jobs:
   macos-tahoe-desktop:
-    runs-on: avrea-macos-26-16-vcpu 
+    runs-on: avrea-macos-26-16-vcpu # رانر اختصاصی شما
 
     steps:
       - name: Checkout Repository
@@ -20,7 +20,7 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. ساخت کاربر ادمین اختصاصی سامیار
+      # ۲. ساخت کاربر ادمین سامیار
       - name: Create Dedicated Admin User
         run: |
           echo "==== Creating Remote User 'samiyar' ===="
@@ -35,56 +35,53 @@ jobs:
           sudo dscl . -append /Groups/admin GroupMembership samiyar
           sudo mkdir -p /Users/samiyar
           sudo chown -R samiyar:staff /Users/samiyar
-          
-          # تنظیم لایه گرافیکی لاگین خودکار روی یوزر سامیار
+
+      # ۳. حل مشکل لاگین و صفحه سیاه (تولید فیزیکی فایل کلید کدهای رمز عبور مک)
+      - name: Configure Real Auto-Login (Bypass Login Window Lock)
+        run: |
+          echo "==== Generating kcpassword for Auto-Login ===="
+          # مک برای لاگین خودکار به این فایل هگزادسیمال نیاز دارد
+          sudo python3 -c '
+          import os
+          passwd = "mac2026!"
+          key = [125, 137, 82, 35, 210, 188, 221, 234, 163, 185, 31]
+          padded = passwd.encode("utf-8") + b"\x00" * (11 - len(passwd) % 11 if len(passwd) % 11 != 0 else 0)
+          out = bytearray(b ^ key[i % 11] for i, b in enumerate(padded))
+          with open("/etc/kcpassword", "wb") as f:
+              f.write(out)
+          os.chmod("/etc/kcpassword", 0o600)
+          '
           sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser samiyar
           sudo pmset -a displaysleep 0 sleep 0 disksleep 0 || true
 
-      # ۳. تزریق صریح مجوزهای Screen Recording و Accessibility به دیتابیس TCC (اصلاح شده با sudo)
-      - name: Inject Explicit Screen Recording & ARD Permissions into TCC.db
+      # ۴. فعال‌سازی سرویس ریموت بومی مک
+      - name: Start Apple Remote Management
         run: |
-          echo "==== Injecting kTCCServiceScreenCapture Paths ===="
-          TIMESTAMP=$(date +%s)
-          
-          SYSTEM_TCC="/Library/Application Support/com.apple.TCC/TCC.db"
-          USER_TCC="/Users/samiyar/Library/Application Support/com.apple.TCC/TCC.db"
-          
-          # ساخت دایرکتوری با دسترسی ادمین برای جلوگیری از Permission denied
-          sudo mkdir -p "/Users/samiyar/Library/Application Support/com.apple.TCC"
-          
-          # مجوز دادن به com.apple.screensharingd در سطح سیستم
-          sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.screensharingd',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
-          sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServicePostEvent','com.apple.screensharingd',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
-          
-          # مجوز دادن به ARDAgent و ترمینال
-          sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.RemoteManagement.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
-          sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.Terminal',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
-          
-          # اعمال همین ساختار روی دیتابیس TCC یوزر سامیار با دسترسی sudo
-          sudo sqlite3 "$USER_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.screensharingd',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
-          sudo sqlite3 "$USER_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.RemoteManagement.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
-          
-          # اصلاح مالکیت پوشه Library به سامیار
-          sudo chown -R samiyar:staff "/Users/samiyar/Library"
-          echo "TCC Database Successfully Patched."
-
-      # ۴. فعال‌سازی و کانفیگ قطعی ARDAgent و Screen Sharing از طریق مسیر فیزیکی kickstart
-      - name: Force Start Apple Remote Management (ARDAgent Kickstart)
-        run: |
-          echo "==== Activating ARDAgent through CoreServices Kickstart ===="
+          echo "==== Activating ARDAgent ===="
           ARD_KICKSTART="/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart"
-          
-          sudo $ARD_KICKSTART -deactivate -stop || true
           sudo $ARD_KICKSTART -configure -allowAccessFor -allUsers -privs -all
           sudo $ARD_KICKSTART -configure -clientopts -setvnclegacy yes -setvncpw -vncpw mac2026!
           sudo $ARD_KICKSTART -activate -start -restart -agent
-          
-          # ری‌استارت بومی دیمون اسکرین شیرینگ
-          sudo launchctl bootout system/com.apple.screensharing 2>/dev/null || true
-          sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
-          sudo pkill screensharingd || true
 
-      # ۵. تنظیم و نصب ساختار صدا
+      # ۵. دانلود و نصب مستقیم و اتوماتیک نوماشین (بدون نیاز به محیط گرافیکی VNC)
+      - name: Direct CLI Installation of NoMachine
+        run: |
+          echo "==== Downloading NoMachine for Apple Silicon ===="
+          curl -L -o nomachine.dmg "https://download.nomachine.com/download/8.14/MacOSX/nomachine_8.14.2_1_arm64.dmg"
+          
+          echo "==== Mounting NoMachine Installer ===="
+          sudo hdiutil attach nomachine.dmg
+          
+          echo "==== Running Silent Installation ===="
+          sudo installer -pkg /Volumes/NoMachine/NoMachine.pkg -target /
+          
+          echo "==== Detaching DMG ===="
+          sudo hdiutil detach /Volumes/NoMachine || true
+          
+          echo "==== Restarting NoMachine Server Service ===="
+          sudo /etc/NX/nxserver --restart || true
+
+      # ۶. تنظیم کارت صدای مجازی
       - name: Setup Audio Infrastructure
         run: |
           echo "==== Configuring BlackHole Audio ===="
@@ -94,41 +91,28 @@ jobs:
           sleep 2
           SwitchAudioSource -s "BlackHole 2ch" || true
 
-      # ۶. ربات فعال کلیک خودکار در پس‌زمینه برای پاپ‌آپ‌های ناگهانی احتمالی
-      - name: Start Background TCC Auto-Approver Bot
+      # ۷. ری‌استارت لایه گرافیکی برای لود شدن دسکتاپ سامیار و نوماشین
+      - name: Force WindowServer Reset
         run: |
-          cat << 'EOF' > tcc_bot.sh
-          #!/bin/bash
-          while true; do
-            osascript -e 'tell application "System Events" to click button "Allow" of window 1 of application process "NotificationCenter"' 2>/dev/null
-            osascript -e 'tell application "System Events" to click button "OK" of window 1 of application process "CoreServicesUIAgent"' 2>/dev/null
-            osascript -e 'tell application "System Events" to click button "Allow" of window 1 of application process "WindowServer"' 2>/dev/null
-            sleep 3
-          done
-          EOF
-          chmod +x tcc_bot.sh
-          ./tcc_bot.sh &
-
-      # ۷. راه‌اندازی مجدد لایه گرافیکی تاهو جهت لود دسکتاپ مجازی (Headless Fix)
-      - name: Force WindowServer Reset to Initialize Virtual Framebuffer
-        run: |
-          echo "==== Forcing WindowServer To Render Headless Screen ===="
+          echo "==== Resetting Graphic Server ===="
           sudo killall -9 WindowServer || true
           sleep 5
           sudo caffeinate -u -d -i -s -t 7200 &
 
-      # ۸. چاپ اطلاعات نهایی اتصال
-      - name: Connection Details
+      # ۸. چاپ اطلاعات نهایی سرویس‌ها
+      - name: Connection Information
         run: |
-          echo "==== Tahoe Engine Setup Complete ===="
+          echo "================================================"
           echo "Tailscale IP: $(tailscale ip -4)"
           echo "Username: samiyar"
           echo "Password: mac2026!"
-          echo "------------------------------------------------"
-          echo "VNC Password (Legacy): mac2026!"
-          echo "------------------------------------------------"
+          echo "================================================"
+          echo "1. NoMachine is ALREADY installed via this script!"
+          echo "2. You can try connecting directly using NoMachine Client to the Tailscale IP."
+          echo "3. If you still want to use VNC, try connecting now. The Auto-Login patch should bypass the black screen."
+          echo "================================================"
 
-      # ۹. زنده نگه داشتن سرور
+      # ۹. زنده نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
           sleep 7200
