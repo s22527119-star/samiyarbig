@@ -1,0 +1,85 @@
+name: 'Terraform macOS Live GUI'
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: 'Terraform on macOS with GUI'
+    # تغییر از ubuntu-latest به macos-latest یا تگ رانر اختصاصی خودتان (مثلاً macos-selfhosted)
+    runs-on: macos-latest
+    environment: production
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    # ۱. واکشی کدهای مخزن
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # ۲. اتصال به شبکه امن Tailscale (برای دور زدن فایروال و اتصال مستقیم به مک)
+    - name: Connect to Tailscale Network
+      uses: tailscale/github-action@v3
+      with:
+        authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+    # ۳. فعال‌سازی GUI، محیط صوتی، VNC و دسترسی کامل کیبورد/ماوس
+    - name: Enable macOS GUI, VNC, Audio & Input Control
+      run: |
+        echo "==== [۱] فعال‌سازی اشتراک‌گذاری دسکتاپ و مدیریت از راه دور ===="
+        # فعال کردن کامل خدمات مدیریت اپل با دسترسی کامل به کیبورد، ماوس و کنترل صفحه
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -activate -configure -access -on -restart -agent -privs -all -allowAccessFor -allUsers
+        
+        # تنظیم رمز عبور دلخواه برای اتصال VNC (به جای macOSVNC@123 رمز امن خود را بگذارید)
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -configure -clientopts -setvncpasswd -vncpasswd macOSVNC@123
+        
+        echo "==== [۲] راه‌اندازی و باز کردن لایه صوتی سیستم ===="
+        # بالا بردن ولوم صدا و اطمینان از فعال بودن زیرسیستم صوتی در بوت گرافیکی
+        sudo nvram SystemAudioVolume=%80 || true
+        sudo systemsetup -setsetsystemstartupaudio on || true
+        
+        echo "==== [۳] دریافت و نمایش آی‌پای اختصاصی شما در شبکه Tailscale ===="
+        echo "=================================================="
+        echo "  آی‌پی مک شما برای اتصال VNC Viewer:"
+        tailscale ip -4
+        echo "  رمز عبور اتصال VNC شما: macOSVNC@123"
+        echo "=================================================="
+
+    # ۴. نصب و تنظیم ترافورم روی مک‌اواس
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3  # بروزرسانی به نسخه v3 جهت سازگاری بهتر با مک
+      with:
+        cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+    # ۵. اجرای مراحل استاندارد ترافورم
+    - name: Terraform Init
+      run: terraform init
+
+    # در محیط مک‌اواس دستور بررسی فرمت را اجرا می‌کنیم
+    - name: Terraform Format
+      run: terraform fmt -check
+
+    - name: Terraform Plan
+      run: terraform plan -input=false
+
+    - name: Terraform Apply
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: terraform apply -auto-approve -input=false
+
+    # ۶. زنده نگه داشتن سرور جهت اتصال و کار با محیط گرافیکی مک
+    - name: Keep Runner Alive for Remote Desktop Access
+      if: always() # حتی اگر ترافورم با خطا مواجه شد، دسترسی گرافیکی باز بماند تا عیب‌یابی کنید
+      run: |
+        echo "اتاق کنترل گرافیکی به مدت ۱ ساعت باز است."
+        echo "می‌توانید با نرم‌افزار VNC Viewer به آی‌پی اختصاصی مشخص شده در مرحله ۳ متصل شوید..."
+        sleep 3600
+        
