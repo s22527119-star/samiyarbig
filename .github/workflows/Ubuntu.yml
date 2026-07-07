@@ -1,78 +1,117 @@
-name: WireGuard VPN Debug
+name: 'Terraform macOS Live GUI'
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
-  wireguard-vpn:
-    runs-on: ubuntu-latest
-    
+  terraform:
+    name: 'Terraform on macOS with GUI'
+    runs-on: macos-latest
+    environment: production
+
+    defaults:
+      run:
+        shell: bash
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    # ۱. واکشی کدهای مخزن
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Create WireGuard Config
-        env:
-          WG_CONFIG: ${{ secrets.WIREGUARD_CONFIG }}
-        run: |
-          mkdir -p /tmp/wg-config
-          echo "$WG_CONFIG" > /tmp/wg-config/wg0.conf
-          chmod 600 /tmp/wg-config/wg0.conf
-          echo "Config file created"
-          cat /tmp/wg-config/wg0.conf | grep -v PrivateKey
+    # ۲. نصب و راه‌اندازی بومی و دستی Tailscale با قابلیت Accept Routes
+    - name: Install and Connect Tailscale (Manual Control)
+      env:
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      run: |
+        echo "==== [۱] نصب Tailscale روی مک‌اواس ===="
+        brew install tailscale
+        
+        echo "==== [۲] راه‌اندازی ورکر و دیمن Tailscale ===="
+        sudo brew services start tailscale
+        sleep 5
+        
+        echo "==== [۳] اتصال به شبکه با کلید اختصاصی و تنظیمات روت ===="
+        sudo tailscale up --authkey="$TAILSCALE_AUTH_KEY" --accept-routes
+        
+        echo "==== [۴] تایید وضعیت اتصال ===="
+        tailscale status
 
-      - name: Start WireGuard Container
-        run: |
-          docker run -d \
-            --name=wireguard \
-            --cap-add=NET_ADMIN \
-            --cap-add=SYS_MODULE \
-            -e PUID=1000 \
-            -e PGID=1000 \
-            -v /tmp/wg-config:/config \
-            --sysctl="net.ipv4.conf.all.src_valid_mark=1" \
-            linuxserver/wireguard:latest
-          
-          echo "Waiting for container to start..."
-          sleep 5
-          
-          echo "=== Container logs (first 30 lines) ==="
-          docker logs wireguard 2>&1 | head -30
+    # ۳. فعال‌سازی GUI، ساخت کاربر جدید و تنظیمات بومی VNC بدون نیاز به دیتابیس SQL
+    - name: Enable macOS GUI, VNC, Audio & Input Control
+      run: |
+        echo "==== [۱] ساخت یک کاربر ادمین جدید برای دسکتاپ گرافیکی ===="
+        sudo sysadminctl -addUser samiyar -fullName "Samiyar Admin" -password "macosuser123" -admin
+        
+        echo "==== [۲] آزادسازی دسترسی‌های گرافیکی با tccutil بومی مک ===="
+        # ریست کردن سرویس‌های کپچر صفحه و دسترسی پیش‌فرض برای اطمینان از عدم قفل بودن
+        sudo tccutil reset ScreenCapture || true
+        sudo tccutil reset Accessibility || true
+        
+        echo "==== [۳] فعال‌سازی کامل مدیریت از راه دور و سرویس اشتراک‌گذاری دسکتاپ ===="
+        # این دستور بومی تمام دسترسی‌های کیبورد، ماوس، کپچر دسکتاپ و مدیریت را یک‌جا باز می‌کند
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -activate -configure -access -on -restart -agent -privs -all -allowAccessFor -allUsers
+        
+        # تنظیم رمز عبور پروتکل VNC
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -configure -clientopts -setvncpasswd -vncpasswd macOSVNC@123
+        
+        echo "==== [۴] راه‌اندازی و باز کردن لایه صوتی سیستم ===="
+        sudo nvram SystemAudioVolume=%80 || true
+        sudo systemsetup -setsetsystemstartupaudio on || true
+        
+        echo "==== [۵] اطلاعات اتصال ===="
+        echo "=================================================="
+        echo "  آی‌پی مک شما در شبکه Tailscale:"
+        tailscale ip -4
+        echo "  رمز اتصال اولیه VNC (در نرم‌افزار): macOSVNC@123"
+        echo "  نام کاربری دسکتاپ مک: samiyar"
+        echo "  رمز عبور دسکتاپ مک (صفحه لاگین): macosuser123"
+        echo "=================================================="
 
-      - name: Check Container Status
-        run: |
-          echo "=== All containers ==="
-          docker ps -a
-          
-          echo "=== WireGuard container status ==="
-          docker inspect wireguard | grep -A 5 "State"
-          
-          echo "=== Container logs (last 20 lines) ==="
-          docker logs wireguard 2>&1 | tail -20
+    # ۴. نصب و تنظیم ترافورم روی مک‌اواس
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-      - name: Test Connection
-        run: |
-          # Check if container is running
-          if docker ps | grep -q wireguard; then
-            echo "Container is running"
-            
-            # Try wg show with error handling
-            docker exec wireguard wg show 2>&1 || echo "wg show failed"
-            
-            # Check network inside container
-            docker exec wireguard ip addr show 2>&1 || echo "ip addr failed"
-            
-            # Check if curl exists in container
-            docker exec wireguard which curl 2>&1 || echo "curl not found in container"
-            
-            # Install curl if needed
-            docker exec wireguard apk add curl 2>&1 || echo "Could not install curl"
-            
-            # Test connection if curl exists
-            docker exec wireguard curl -s --connect-timeout 10 ifconfig.me 2>&1 || echo "curl ifconfig.me failed"
-          else
-            echo "ERROR: Container is not running!"
-            docker logs wireguard 2>&1
-          fi
+    # ۵. سناریو دوم: ساخت فایل ترافورم نمونه
+    - name: Create Dummy Terraform File
+      run: |
+        cat <<EOF > main.tf
+        terraform {
+        }
+        resource "null_resource" "dummy" {
+          triggers = {
+            value = "Hello macOS"
+          }
+        }
+        EOF
+
+    # ۶. اجرای مراحل استاندارد ترافورم
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Format
+      run: terraform fmt -check
+
+    - name: Terraform Plan
+      run: terraform plan -input=false
+
+    - name: Terraform Apply
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: terraform apply -auto-approve -input=false
+
+    # ۷. زنده نگه داشتن سرور جهت اتصال و کار با محیط گرافیکی مک
+    - name: Keep Runner Alive for Remote Desktop Access
+      if: always()
+      run: |
+        echo "اتاق کنترل گرافیکی به مدت ۱ ساعت باز است."
+        echo "می‌توانید متصل شوید..."
+        sleep 3600
+        
