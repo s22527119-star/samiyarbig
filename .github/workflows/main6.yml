@@ -5,7 +5,7 @@ on:
 
 jobs:
   macos-desktop:
-    runs-on: namespace-profile-samiyarbig # رانر اختصاصی شما
+    runs-on: avrea-macos-seqouia # رانر اختصاصی شما
 
     steps:
       - name: Checkout Repository
