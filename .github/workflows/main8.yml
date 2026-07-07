@@ -1,19 +1,60 @@
-name: Baremetal Run with Custom Token
+name: Shared Cloud macOS with Baremetal Token
 
 on:
   workflow_dispatch:
 
 jobs:
-  baremetal-setup:
-    # می‌توانید این را روی ubuntu-latest یا هر رانر دیگری که مد نظرتان است بگذارید
-    runs-on: ubuntu-latest 
+  launch-macos-baremetal:
+    # اجرای پروژه روی مک‌اواس رسمی گیت‌هاب
+    runs-on: macos-15 
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # اجرای مستقیم دستور curl و توکن اختصاصی شما
+      # ۱. بیدار نگه داشتن کارت گرافیک و مانیتور مجازی مک
+      - name: Initialize Display Server
+        run: |
+          echo "==== Activating WindowServer ===="
+          sudo caffeinate -u -t 7200 &
+
+      # ۲. اجرای دقیق دستور curl و توکن اختصاصی شما
       - name: Execute Baremetal Installer
         run: |
           echo "==== Running Baremetal Installer ===="
           curl -fsSL https://baremetal.run/install.sh | bash -s -- cjt_6b74ce6b0d97e836168babb94bf69de901a08a6f0a668eb47fc0889725c840ee
+
+      # ۳. اتصال به شبکه امن Tailscale
+      - name: Connect Tailscale Network
+        run: |
+          echo "==== Installing Tailscale ===="
+          brew install tailscale
+          sudo brew services start tailscale
+          sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
+
+      # ۴. راه‌اندازی و کانفیگ سرور گرافیکی مک (VNC بومی)
+      - name: Enable Apple Remote Desktop
+        run: |
+          echo "==== Setting up VNC Access ===="
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -allowAccessFor -allUsers -privs -all
+          
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -clientopts -setvnclegacy yes -setvncpw -vncpw mac2026!
+          
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+
+      # ۵. چاپ اطلاعات نهایی برای اتصال شما
+      - name: Show Connection Guide
+        run: |
+          echo "================================================="
+          echo "🌐 TAILSCALE IP: $(tailscale ip -4)"
+          echo "🔑 VNC PASSWORD: mac2026!"
+          echo "👤 USERNAME: $(whoami)"
+          echo "================================================="
+
+      # ۶. زنده نگه داشتن رانر به مدت ۲ ساعت
+      - name: Hold Runner Alive
+        run: sleep 7200
+        
