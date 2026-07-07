@@ -1,0 +1,112 @@
+name: Hosted macOS 16vCPU Tahoe (Native VNC Access Fix)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  macos-desktop:
+    runs-on: avrea-macos-26-16-vcpu # رانر اختصاصی و قدرتمند شما
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ۱. اتصال به شبکه امن Tailscale
+      - name: Install and Connect Tailscale
+        run: |
+          echo "==== Installing Tailscale ===="
+          brew install tailscale
+          sudo brew services start tailscale
+          sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
+
+      # ۲. ساخت کاربر ادمین برای عبور از سد امنیتی لاگین Tahoe
+      - name: Create Dedicated Admin User for Tahoe
+        run: |
+          echo "==== Creating Remote User 'samiyar' ===="
+          sudo dscl . -delete /Users/samiyar || true
+          
+          sudo dscl . -create /Users/samiyar
+          sudo dscl . -create /Users/samiyar UserShell /bin/zsh
+          sudo dscl . -create /Users/samiyar RealName "Samiyar Big"
+          sudo dscl . -create /Users/samiyar UniqueID "555"
+          sudo dscl . -create /Users/samiyar PrimaryGroupID 20
+          sudo dscl . -create /Users/samiyar NFSHomeDirectory /Users/samiyar
+          
+          # ست کردن رمز عبور ثابت
+          sudo dscl . -passwd /Users/samiyar mac2026!
+          
+          # ارتقا به سطح دسترسی ادمین جهت تایید پاپ‌آپ‌ها
+          sudo dscl . -append /Groups/admin GroupMembership samiyar
+          
+          # ساخت دایرکتوری خانگی و اصلاح مالکیت فایل‌ها
+          sudo mkdir -p /Users/samiyar
+          sudo chown -R samiyar:staff /Users/samiyar
+          
+          # غیرفعال کردن Sleep سیستم در لایه مدیریت توان Tahoe
+          sudo pmset -a displaysleep 0 sleep 0 disksleep 0 || true
+
+      # ۳. راه‌اندازی شبیه‌ساز گرافیکی بومی اپل با ساختار اختصاصی macOS 26 Tahoe
+      - name: Enable Native VNC via Apple Remote Management
+        run: |
+          echo "==== Activating Apple Remote Management for Tahoe ===="
+          
+          # بیدار کردن دیمون مدیریت ریموت سیستم‌عامل
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
+          
+          # دادن مجوز کامل رانندگی سیستم به کاربر ساخته شده
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -allowAccessFor -allUsers -privs -all
+          
+          # ست کردن رمز عبور لایه VNC طبق آخرین داکیومنت موتور گرافیکی Tahoe
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -clientopts -setvnclegacy yes -setvncpw yes -vncpw mac2026!
+          
+          # فورس ری‌استارت کامپوننت گرافیکی آژانس ریموت مک
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+
+      # ۴. نصب ابزارهای مدیریت صدا برای انتقال استریم صوتی
+      - name: Install Audio Utilities via Homebrew
+        run: |
+          echo "==== Installing Audio Tools ===="
+          brew install blackhole-2ch || true
+          brew install switchaudio-osx || true
+          
+          sudo killall coreaudiod || true
+          sleep 3
+          
+          # سوئیچ کردن خروجی صدا به کارت صدای مجازی BlackHole
+          SwitchAudioSource -s "BlackHole 2ch" || true
+
+      # ۵. بیدارباش اجباری سیستم گرافیکی فریم‌بافر (Caffeinate)
+      - name: Force WindowServer Framebuffer to Stay Awake
+        run: |
+          echo "==== Preventing Tahoe Graphics from Dropping Framebuffer ===="
+          # فعال نگه‌داشتن دیسپلی مجازی با فلگ‌های کامل سخت‌افزاری
+          sudo caffeinate -u -d -i -s -t 7200 &
+          sleep 2
+
+      # ۶. نمایش اطلاعات ورود اختصاصی
+      - name: Get Connection Details
+        run: |
+          echo "==== Tahoe Graphic Environment Ready ===="
+          echo "------------------------------------------------"
+          echo "Tailscale IP: $(tailscale ip -4)"
+          echo "Username: samiyar"
+          echo "Password: mac2026!"
+          echo "VNC Password: mac2026!"
+          echo "------------------------------------------------"
+          echo "PROCEDURE FOR TAHOE SCREEN CAPTURE:"
+          echo "1. Connect using a VNC Viewer to -> TAILSCALE_IP:5900"
+          echo "2. Enter VNC Password: mac2026!"
+          echo "3. Log in with user 'samiyar' inside the macOS interface."
+          echo "4. Open Safari, download NoMachine, and install it."
+          echo "5. A popup will instantly appear for Screen Recording, just click Allow!"
+          echo "------------------------------------------------"
+
+      # ۷. زنده نگه داشتن رانر جهت کار شما
+      - name: Keep Runner Alive
+        run: |
+          echo "==== Runner is actively listening on Tailscale IP ===="
+          sleep 7200
+          
