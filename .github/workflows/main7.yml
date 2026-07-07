@@ -5,7 +5,7 @@ on:
 
 jobs:
   macos-tahoe-desktop:
-    runs-on: avrea-macos-26-16-vcpu # رانر اختصاصی شما
+    runs-on: avrea-macos-26-16-vcpu 
 
     steps:
       - name: Checkout Repository
@@ -40,34 +40,32 @@ jobs:
           sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser samiyar
           sudo pmset -a displaysleep 0 sleep 0 disksleep 0 || true
 
-      # ۳. تزریق صریح مجوزهای Screen Recording و Accessibility به دیتابیس TCC (حل قطعی صفحه سیاه)
+      # ۳. تزریق صریح مجوزهای Screen Recording و Accessibility به دیتابیس TCC (اصلاح شده با sudo)
       - name: Inject Explicit Screen Recording & ARD Permissions into TCC.db
         run: |
           echo "==== Injecting kTCCServiceScreenCapture Paths ===="
           TIMESTAMP=$(date +%s)
           
-          # مسیر دیتابیس TCC سیستم و یوزر
           SYSTEM_TCC="/Library/Application Support/com.apple.TCC/TCC.db"
           USER_TCC="/Users/samiyar/Library/Application Support/com.apple.TCC/TCC.db"
           
-          # مطمئن شدن از وجود دایرکتوری TCC یوزر
-          mkdir -p "/Users/samiyar/Library/Application Support/com.apple.TCC"
+          # ساخت دایرکتوری با دسترسی ادمین برای جلوگیری از Permission denied
+          sudo mkdir -p "/Users/samiyar/Library/Application Support/com.apple.TCC"
           
-          # فرمت تزریق برای ساختار مک‌های جدید (Sequoia / Tahoe) برای سرویس‌های اصلی ریموت دسکتاپ و اسکرین کپچر
-          # مجوز دادن به com.apple.screensharingd
+          # مجوز دادن به com.apple.screensharingd در سطح سیستم
           sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.screensharingd',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
           sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServicePostEvent','com.apple.screensharingd',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
           
-          # مجوز دادن به ARDAgent و RemoteManagement
+          # مجوز دادن به ARDAgent و ترمینال
           sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.RemoteManagement.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
           sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.Terminal',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
           
-          # اعمال همین ساختار روی دیتابیس TCC یوزر سامیار جهت اطمینان ۱۰۰٪
-          sqlite3 "$USER_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.screensharingd',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
-          sqlite3 "$USER_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.RemoteManagement.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
+          # اعمال همین ساختار روی دیتابیس TCC یوزر سامیار با دسترسی sudo
+          sudo sqlite3 "$USER_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.screensharingd',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
+          sudo sqlite3 "$USER_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.RemoteManagement.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
           
-          # اصلاح مالکیت فایل دیتابیس یوزر
-          sudo chown -R samiyar:staff "/Users/samiyar/Library/Application Support/com.apple.TCC"
+          # اصلاح مالکیت پوشه Library به سامیار
+          sudo chown -R samiyar:staff "/Users/samiyar/Library"
           echo "TCC Database Successfully Patched."
 
       # ۴. فعال‌سازی و کانفیگ قطعی ARDAgent و Screen Sharing از طریق مسیر فیزیکی kickstart
@@ -76,19 +74,12 @@ jobs:
           echo "==== Activating ARDAgent through CoreServices Kickstart ===="
           ARD_KICKSTART="/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart"
           
-          # غیرفعال کردن اولیه برای پاکسازی سشن‌های قفل شده قدیمی
           sudo $ARD_KICKSTART -deactivate -stop || true
-          
-          # کانفیگ کامل دسترسی برای همه پورت‌ها و ویژگی‌ها
           sudo $ARD_KICKSTART -configure -allowAccessFor -allUsers -privs -all
-          
-          # تنظیم پسورد VNC به عنوان لایه دوم بک‌آپ در کنار Mac Authentication
           sudo $ARD_KICKSTART -configure -clientopts -setvnclegacy yes -setvncpw -vncpw mac2026!
-          
-          # راه‌اندازی مجدد اکتیو ایجنت ریموت
           sudo $ARD_KICKSTART -activate -start -restart -agent
           
-          # ری‌استارت بومی دیمون اسکرین شیرینگ برای لود کردن ساختار جدید TCC
+          # ری‌استارت بومی دیمون اسکرین شیرینگ
           sudo launchctl bootout system/com.apple.screensharing 2>/dev/null || true
           sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
           sudo pkill screensharingd || true
@@ -134,7 +125,7 @@ jobs:
           echo "Username: samiyar"
           echo "Password: mac2026!"
           echo "------------------------------------------------"
-          echo "If Mac User auth fails, you can now also use VNC Password: mac2026!"
+          echo "VNC Password (Legacy): mac2026!"
           echo "------------------------------------------------"
 
       # ۹. زنده نگه داشتن سرور
