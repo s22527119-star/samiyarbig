@@ -11,18 +11,16 @@ permissions:
 jobs:
   terraform:
     name: 'Terraform on macOS with GUI'
-    # در صورت استفاده از رانر اختصاصی خود، این خط را به تگ رانر خود (مثلاً macos-selfhosted) تغییر دهید
     runs-on: macos-latest
     environment: production
 
-    # تنظیم مسیر پیش‌فرض برای تمام دستورات ترافورم (سناریو اول)
+    # بخش defaults بالا را حذف یا به حالت استاندارد برگرداندیم تا رانر در لایه روت به مشکل نخورد
     defaults:
       run:
         shell: bash
-        working-directory: ./terraform  # <--- ترافورم تمام فایل‌های .tf را در این پوشه به دنبالش می‌گردد
 
     steps:
-    # ۱. واکشی کدهای مخزن
+    # ۱. واکشی کدهای مخزن (این کار پوشه‌ها را می‌سازد)
     - name: Checkout
       uses: actions/checkout@v4
 
@@ -71,23 +69,27 @@ jobs:
       with:
         cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-    # ۵. اجرای مراحل استاندارد ترافورم (در پوشه ./terraform)
+    # ۵. اجرای مراحل استاندارد ترافورم (حالا پوشه را فقط به این استپ‌ها محدود کردیم)
     - name: Terraform Init
+      working-directory: ./terraform  # <--- انتقال مسیر اختصاصی به اینجا
       run: terraform init
 
     - name: Terraform Format
+      working-directory: ./terraform  # <--- انتقال مسیر اختصاصی به اینجا
       run: terraform fmt -check
 
     - name: Terraform Plan
+      working-directory: ./terraform  # <--- انتقال مسیر اختصاصی به اینجا
       run: terraform plan -input=false
 
     - name: Terraform Apply
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      working-directory: ./terraform  # <--- انتقال مسیر اختصاصی به اینجا
       run: terraform apply -auto-approve -input=false
 
     # ۶. زنده نگه داشتن سرور جهت اتصال و کار با محیط گرافیکی مک (حتی در صورت ارور ترافورم)
     - name: Keep Runner Alive for Remote Desktop Access
-      if: always() # این خط تضمین می‌کند در صورت بروز خطا در پلان ترافورم، گیت‌هاب بسته نشود تا شما عیب‌یابی کنید
+      if: always()
       run: |
         echo "اتاق کنترل گرافیکی به مدت ۱ ساعت باز است."
         echo "می‌توانید با نرم‌افزار VNC Viewer به آی‌پی اختصاصی مشخص شده در مرحله ۳ متصل شوید..."
