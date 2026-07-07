@@ -41,25 +41,37 @@ jobs:
         echo "==== [۴] تایید وضعیت اتصال ===="
         tailscale status
 
-    # ۳. فعال‌سازی GUI، محیط صوتی، VNC و دسترسی کامل کیبورد/ماوس
+    # ۳. فعال‌سازی GUI، محیط صوتی، VNC، تنظیم پسورد یوزر و فعال‌سازی Screen Recording
     - name: Enable macOS GUI, VNC, Audio & Input Control
       run: |
-        echo "==== [۱] فعال‌سازی اشتراق‌گذاری دسکتاپ و مدیریت از راه دور ===="
+        echo "==== [۱] تنظیم پسورد برای کاربر سیستم (runner) ===="
+        # تنظیم رمز عبور macosuser123 برای کاربر جاری جهت لاگین در محیط گرافیکی
+        sudo dscl . -passwd /Users/runner macosuser123
+        
+        echo "==== [۲] تزریق دسترسی Screen Recording و کنترل سیستم به سرویس VNC ===="
+        # اضافه کردن دسترسی ضبط صفحه و مدیریت سیستم به ایجنت‌های گرافیکی اپل در دیتابیس امنیتی TCC
+        sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,CAST(strftime('%s','now') AS INTEGER));"
+        sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','com.apple.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,CAST(strftime('%s','now') AS INTEGER));"
+        
+        echo "==== [۳] فعال‌سازی اشتراک‌گذاری دسکتاپ و مدیریت از راه دور ===="
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate -configure -access -on -restart -agent -privs -all -allowAccessFor -allUsers
         
+        # تنظیم رمز عبور پروتکل VNC
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -configure -clientopts -setvncpasswd -vncpasswd macOSVNC@123
         
-        echo "==== [۲] راه‌اندازی و باز کردن لایه صوتی سیستم ===="
+        echo "==== [۴] راه‌اندازی و باز کردن لایه صوتی سیستم ===="
         sudo nvram SystemAudioVolume=%80 || true
         sudo systemsetup -setsetsystemstartupaudio on || true
         
-        echo "==== [۳] دریافت و نمایش آی‌پای اختصاصی شما در شبکه Tailscale ===="
+        echo "==== [۵] اطلاعات نهایی اتصال ===="
         echo "=================================================="
-        echo "  آی‌پی مک شما برای اتصال VNC Viewer:"
+        echo "  آی‌پی مک شما در شبکه Tailscale:"
         tailscale ip -4
-        echo "  رمز عبور اتصال VNC شما: macOSVNC@123"
+        echo "  رمز اتصال اوليه VNC (در نرم‌افزار): macOSVNC@123"
+        echo "  نام کاربری دسکتاپ مک: runner"
+        echo "  رمز عبور دسکتاپ مک (صفحه لاگین): macosuser123"
         echo "=================================================="
 
     # ۴. نصب و تنظیم ترافورم روی مک‌اواس
@@ -73,7 +85,6 @@ jobs:
       run: |
         cat <<EOF > main.tf
         terraform {
-          # اگر از لایه ابری استفاده نمی‌کنید این بخش را خالی بگذارید
         }
         resource "null_resource" "dummy" {
           triggers = {
@@ -82,7 +93,7 @@ jobs:
         }
         EOF
 
-    # ۶. اجرای مراحل استاندارد ترافورم در مسیر اصلی (Root)
+    # ۶. اجرای مراحل استاندارد ترافورم
     - name: Terraform Init
       run: terraform init
 
@@ -96,11 +107,11 @@ jobs:
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       run: terraform apply -auto-approve -input=false
 
-    # ۷. زنده نگه داشتن سرور جهت اتصال و کار با محیط گرافیکی مک (حتی در صورت ارور ترافورم)
+    # ۷. زنده نگه داشتن سرور جهت اتصال و کار با محیط گرافیکی مک
     - name: Keep Runner Alive for Remote Desktop Access
       if: always()
       run: |
         echo "اتاق کنترل گرافیکی به مدت ۱ ساعت باز است."
-        echo "می‌توانید با نرم‌افزار VNC Viewer به آی‌پی اختصاصی مشخص شده در مرحله ۳ متصل شوید..."
+        echo "می‌توانید متصل شوید..."
         sleep 3600
         
