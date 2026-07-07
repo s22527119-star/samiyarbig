@@ -11,7 +11,7 @@ permissions:
 jobs:
   terraform:
     name: 'Terraform on macOS with GUI'
-    # تغییر از ubuntu-latest به macos-latest یا تگ رانر اختصاصی خودتان (مثلاً macos-selfhosted)
+    # در صورت استفاده از رانر اختصاصی خود، این خط را به تگ رانر خود (مثلاً macos-selfhosted) تغییر دهید
     runs-on: macos-latest
     environment: production
 
@@ -24,11 +24,28 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # ۲. اتصال به شبکه امن Tailscale (برای دور زدن فایروال و اتصال مستقیم به مک)
-    - name: Connect to Tailscale Network
-      uses: tailscale/github-action@v3
-      with:
-        authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+    # ۲. نصب و راه‌اندازی بومی و دستی Tailscale با قابلیت Accept Routes (جایگزین اکشن قدیمی)
+    - name: Install and Connect Tailscale (Manual Control)
+      env:
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      run: |
+        echo "==== [۱] نصب Tailscale روی مک‌اواس ===="
+        # نصب سریع کلاینت تایل‌اسکیل با استفاده از Homebrew
+        brew install tailscale
+        
+        echo "==== [۲] راه‌اندازی ورکر و دیمن Tailscale ===="
+        # سرویس پس‌زمینه تایل‌اسکیل را با دسترسی روت استارت می‌زنیم
+        sudo brew services start tailscale
+        
+        # چند ثانیه صبر برای مطمئن شدن از بالا آمدن ساب‌سیستم شبکه
+        sleep 5
+        
+        echo "==== [۳] اتصال به شبکه با کلید اختصاصی و تنظیمات روت ===="
+        # اجرای دستور مد نظر شما همراه با پاس دادن سکرت درون متغیر محیطی
+        sudo tailscale up --authkey="$TAILSCALE_AUTH_KEY" --accept-routes
+        
+        echo "==== [۴] تایید وضعیت اتصال ===="
+        tailscale status
 
     # ۳. فعال‌سازی GUI، محیط صوتی، VNC و دسترسی کامل کیبورد/ماوس
     - name: Enable macOS GUI, VNC, Audio & Input Control
@@ -56,7 +73,7 @@ jobs:
 
     # ۴. نصب و تنظیم ترافورم روی مک‌اواس
     - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3  # بروزرسانی به نسخه v3 جهت سازگاری بهتر با مک
+      uses: hashicorp/setup-terraform@v3
       with:
         cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
@@ -64,7 +81,6 @@ jobs:
     - name: Terraform Init
       run: terraform init
 
-    # در محیط مک‌اواس دستور بررسی فرمت را اجرا می‌کنیم
     - name: Terraform Format
       run: terraform fmt -check
 
@@ -77,7 +93,7 @@ jobs:
 
     # ۶. زنده نگه داشتن سرور جهت اتصال و کار با محیط گرافیکی مک
     - name: Keep Runner Alive for Remote Desktop Access
-      if: always() # حتی اگر ترافورم با خطا مواجه شد، دسترسی گرافیکی باز بماند تا عیب‌یابی کنید
+      if: always() # حتی اگر ترافورم با خطا مواجه شد، دسترسی گرافیکی باز بماند تا امکان عیب‌یابی داشته باشید
       run: |
         echo "اتاق کنترل گرافیکی به مدت ۱ ساعت باز است."
         echo "می‌توانید با نرم‌افزار VNC Viewer به آی‌پی اختصاصی مشخص شده در مرحله ۳ متصل شوید..."
