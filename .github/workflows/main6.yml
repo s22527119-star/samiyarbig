@@ -1,17 +1,17 @@
-name: Hosted macOS 16vCPU Environment (NoMachine Fix)
+name: Hosted macOS 16vCPU (Native VNC for Manual Setup)
 
 on:
   workflow_dispatch:
 
 jobs:
   macos-desktop:
-    runs-on: namespace-profile-samiyarbig
+    runs-on: namespace-profile-samiyarbig # رانر اختصاصی شما
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. راه‌اندازی شبکه Tailscale
+      # ۱. اتصال به شبکه امن Tailscale
       - name: Install and Connect Tailscale
         run: |
           echo "==== Installing Tailscale ===="
@@ -20,79 +20,90 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. ساخت کاربر ادمین برای سیستم و تنظیمات مدیریت توان
-      - name: Create macOS User
+      # ۲. ساخت یک کاربر ادمین جدید به نام samiyar (برای لاگین در محیط گرافیکی)
+      - name: Create Dedicated Admin User
         run: |
-          echo "==== Creating GUI User ===="
-          sudo sysadminctl -addUser nxuser -fullName "NoMachine Admin" -password "mac2026!" -admin
-          sudo dscl . -create /Users/nxuser IsHidden 0
+          echo "==== Creating Remote User 'samiyar' ===="
+          sudo dscl . -delete /Users/samiyar || true
           
-          # جلوگیری از به خواب رفتن دیسپلی و هارد
-          sudo pmset -a displaysleep 0 sleep 0 disksleep 0
+          sudo dscl . -create /Users/samiyar
+          sudo dscl . -create /Users/samiyar UserShell /bin/zsh
+          sudo dscl . -create /Users/samiyar RealName "Samiyar Big"
+          sudo dscl . -create /Users/samiyar UniqueID "555"
+          sudo dscl . -create /Users/samiyar PrimaryGroupID 20
+          sudo dscl . -create /Users/samiyar NFSHomeDirectory /Users/samiyar
+          
+          # ست کردن رمز عبور ثابت
+          sudo dscl . -passwd /Users/samiyar mac2026!
+          
+          # ارتقا به سطح دسترسی ادمین
+          sudo dscl . -append /Groups/admin GroupMembership samiyar
+          
+          # ساخت دایرکتوری خانگی
+          sudo mkdir -p /Users/samiyar
+          sudo chown -R samiyar:staff /Users/samiyar
+          
+          # جلوگیری از به خواب رفتن گرافیک و سیستم
+          sudo pmset -a displaysleep 0 sleep 0 disksleep 0 || true
 
-      # ۳. نصب NoMachine
-      - name: Install NoMachine
+      # ۳. فعال‌سازی ریموت دسکتاپ بومی اپل (VNC) با دستورات تصحیح‌شده مک ۲۶ Tahoe
+      - name: Enable Native Apple Remote Desktop & VNC
         run: |
-          echo "==== Downloading and Installing NoMachine ===="
-          brew install --cask nomachine
+          echo "==== Activating Apple Remote Management ===="
+          
+          # فعال‌سازی دیمون ریموت دسکتاپ
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
+          
+          # تنظیم دسترسی کامل برای همه کاربران ادمین
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -allowAccessFor -allUsers -privs -all
+          
+          # ست کردن پسورد VNC با آرگومان‌های بومی و بدون ارور
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -clientopts -setvnclegacy yes -setvncpw yes -vncpw mac2026!
+          
+          # ری‌استارت نهایی سرویس گرافیکی ریموت
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
 
-      # ۴. اعطای دسترسی Screen Recording، صدا و کنترل حرکتی (حل مشکل صفحه سیاه)
-      - name: Grant Screen Recording and Audio Permissions
+      # ۴. نصب ابزارهای مدیریت و انتقال صدا
+      - name: Install Audio Utilities via Homebrew
         run: |
-          echo "==== Injecting Permissions into macOS TCC Database ===="
-          # مسیرهای اصلی باینری‌های NoMachine که نیاز به کپچر دارند
-          NX_SERVER="/Library/Application Support/NoMachine/bin/nxserver.bin"
-          NX_NODE="/Library/Application Support/NoMachine/bin/nxnode.bin"
+          echo "==== Installing Audio Tools ===="
+          brew install blackhole-2ch || true
+          brew install switchaudio-osx || true
           
-          # تزریق دسترسی ضبط صفحه (Screen Recording) برای هر دو پروسه اصلی نوماشین
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','$NX_SERVER',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','$NX_NODE',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
+          sudo killall coreaudiod || true
+          sleep 3
           
-          # تزریق دسترسی کنترل ماوس و کیبورد (Accessibility)
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$NX_SERVER',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
-          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$NX_NODE',1,1,1,NULL,NULL,NULL,'UNUSED',NULL,0,$(date +%s));" || true
-          
-          # ریست کردن کش سیستم امنیتی برای لود مجدد دسترسی‌ها
-          sudo tccutil reset ScreenCapture || true
-          sudo defaults write /Library/Preferences/com.apple.RemoteManagement PrivacyInquiry -bool false || true
+          # مسیردهی خروجی صدا به کارت صدای مجازی برای ضبط
+          SwitchAudioSource -s "BlackHole 2ch" || true
 
-      # ۵. تنظیمات صوتی و راه‌اندازی دسکتاپ مجازی نوماشین
-      - name: Configure and Start NoMachine Server
+      # ۵. زنده نگه داشتن فریم‌بافر دسکتاپ (جلوگیری از سیاه شدن مانیتور مجازی)
+      - name: Keep Video Framebuffer Alive
         run: |
-          echo "==== Configuring NoMachine Features ===="
-          # فعال‌سازی مانیتور مجازی و استریم صدا در کانفیگ نوماشین
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey ScreenResolution 1920x1080 || true
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --virtualdisplay add --shared || true
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey PhysicalDisplayAllowVirtualInbound yes || true
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --configkey EnableAudioStreaming yes || true
-          
-          # اعطای دسترسی صدا و ورودی به یوزر جدید
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --ruleadd user=nxuser class=input service=yes || true
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --ruleadd user=nxuser class=audio service=yes || true
-          
-          echo "==== Restarting NX Service ===="
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --restart
-          sudo /Library/Application\ Support/NoMachine/bin/nxserver --status
-
-      # ۶. بیدار نگه داشتن فریم‌بافر دسکتاپ
-      - name: Wake Graphics Framebuffer
-        run: |
-          echo "==== Keeping Screen Active via Caffeinate ===="
+          echo "==== Preventing macOS Graphics from Sleeping ===="
           sudo caffeinate -u -d -i -s -t 7200 &
           sleep 2
 
-      # ۷. اطلاعات اتصال
+      # ۶. نمایش اطلاعات ورود مستقیم
       - name: Get Connection Details
         run: |
-          echo "==== Ready to Connect ===="
+          echo "==== Ready for Manual Setup via VNC ===="
+          echo "------------------------------------------------"
           echo "Tailscale IP: $(tailscale ip -4)"
-          echo "Port: 4000"
-          echo "Username: nxuser"
+          echo "Username: samiyar"
           echo "Password: mac2026!"
+          echo "VNC Password: mac2026!"
+          echo "------------------------------------------------"
+          echo "HOW TO CONNECT AND INSTALL:"
+          echo "1. Open your VNC Viewer (like RealVNC or TightVNC) on your local system."
+          echo "2. Connect to -> TAILSCALE_IP:5900"
+          echo "3. Enter VNC Password: mac2026!"
+          echo "4. Once inside the macOS GUI, open Safari, go to NoMachine's website, download and install it manually!"
+          echo "------------------------------------------------"
 
-      # ۸. زنده نگه داشتن رانر
+      # ۷. زنده نگه داشتن رانر جهت کار شما
       - name: Keep Runner Alive
         run: |
-          echo "==== Session is active ===="
+          echo "==== Runner is alive and waiting for your VNC connection ===="
           sleep 7200
-          
