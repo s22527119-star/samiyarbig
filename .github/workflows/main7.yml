@@ -16,7 +16,7 @@ jobs:
       - name: Install and Connect Tailscale
         run: |
           echo "==== Installing Tailscale on Ubuntu ===="
-          snap install tailscale
+          sudo snap install tailscale
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
       # ۲. اجرای توکن BareMetal روی اوبونتو برای بالا آوردن دسکتاپ مک‌اواس
