@@ -67,8 +67,7 @@ jobs:
       - name: Direct CLI Installation of NoMachine
         run: |
           echo "==== Downloading NoMachine for Apple Silicon ===="
-          curl -L -o nomachine.dmg "https://download.nomachine.com/download/8.14/MacOSX/nomachine_8.14.2_1_arm64.dmg"
-          
+          curl -L -o nomachine.dmg "https://web9001.nomachine.com/download/9.7/MacOSX/nomachine_9.7.3_1.dmg"
           echo "==== Mounting NoMachine Installer ===="
           sudo hdiutil attach nomachine.dmg
           
