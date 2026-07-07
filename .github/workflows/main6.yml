@@ -5,7 +5,7 @@ on:
 
 jobs:
   macos-desktop:
-    runs-on: avrea-macos-26-16-vcpu # رانر اختصاصی شما
+    runs-on: namespace-profile-samiyarbig # رانر اختصاصی شما
 
     steps:
       - name: Checkout Repository
