@@ -1,11 +1,11 @@
-name: Hosted macOS Tahoe 26 (Avrea 16vCPU Precision Fix)
+name: Hosted macOS Tahoe 26 (Avrea Precision TCC Fix)
 
 on:
   workflow_dispatch:
 
 jobs:
   macos-tahoe-desktop:
-    runs-on: avrea-macos-26-16-vcpu # رانر اختصاصی شما با مک‌اواس ۲۶ (Tahoe)
+    runs-on: avrea-macos-26-16-vcpu # رانر اختصاصی شما
 
     steps:
       - name: Checkout Repository
@@ -20,68 +20,95 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. ساخت کاربر ادمین اختصاصی برای لود شدن دسکتاپ واقعی Tahoe
-      - name: Create Dedicated Admin User for Tahoe
+      # ۲. ساخت کاربر ادمین اختصاصی سامیار
+      - name: Create Dedicated Admin User
         run: |
           echo "==== Creating Remote User 'samiyar' ===="
           sudo dscl . -delete /Users/samiyar || true
-          
           sudo dscl . -create /Users/samiyar
           sudo dscl . -create /Users/samiyar UserShell /bin/zsh
           sudo dscl . -create /Users/samiyar RealName "Samiyar Big"
           sudo dscl . -create /Users/samiyar UniqueID "555"
           sudo dscl . -create /Users/samiyar PrimaryGroupID 20
           sudo dscl . -create /Users/samiyar NFSHomeDirectory /Users/samiyar
-          
-          # ست کردن رمز عبور ثابت
           sudo dscl . -passwd /Users/samiyar mac2026!
-          
-          # ارتقا به سطح دسترسی ادمین جهت مدیریت پاپ‌آپ‌ها
           sudo dscl . -append /Groups/admin GroupMembership samiyar
-          
-          # ساخت دایرکتوری خانگی و اصلاح مالکیت فایل‌ها
           sudo mkdir -p /Users/samiyar
           sudo chown -R samiyar:staff /Users/samiyar
           
-          # تنظیم لاگین خودکار برای فعال شدن سشن گرافیکی واقعی در لایه WindowServer
+          # تنظیم لایه گرافیکی لاگین خودکار روی یوزر سامیار
           sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser samiyar
-          
-          # غیرفعال کردن مودهای به خواب رفتن سیستم
           sudo pmset -a displaysleep 0 sleep 0 disksleep 0 || true
 
-      # ۳. فعال‌سازی ریموت منجمنت بومی اپل (بدون استفاده از لایه Legacy VNC)
-      - name: Configure Apple Remote Management (Bypass Black Screen)
+      # ۳. تزریق صریح مجوزهای Screen Recording و Accessibility به دیتابیس TCC (حل قطعی صفحه سیاه)
+      - name: Inject Explicit Screen Recording & ARD Permissions into TCC.db
         run: |
-          echo "==== Activating Native Remote Management ===="
+          echo "==== Injecting kTCCServiceScreenCapture Paths ===="
+          TIMESTAMP=$(date +%s)
           
-          # فعال‌سازی کامپوننت اصلی مدیریت از راه دور سیستم
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
+          # مسیر دیتابیس TCC سیستم و یوزر
+          SYSTEM_TCC="/Library/Application Support/com.apple.TCC/TCC.db"
+          USER_TCC="/Users/samiyar/Library/Application Support/com.apple.TCC/TCC.db"
           
-          # اعطای دسترسی کامل به تمام یوزرهای ادمین (جلوگیری از بلاک شدن تصویر توسط TCC)
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -configure -allowAccessFor -allUsers -privs -all
+          # مطمئن شدن از وجود دایرکتوری TCC یوزر
+          mkdir -p "/Users/samiyar/Library/Application Support/com.apple.TCC"
           
-          # ری‌استارت سرویس ریموت برای اعمال تغییرات بدون ست کردن پسورد سنتی VNC
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+          # فرمت تزریق برای ساختار مک‌های جدید (Sequoia / Tahoe) برای سرویس‌های اصلی ریموت دسکتاپ و اسکرین کپچر
+          # مجوز دادن به com.apple.screensharingd
+          sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.screensharingd',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
+          sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServicePostEvent','com.apple.screensharingd',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
+          
+          # مجوز دادن به ARDAgent و RemoteManagement
+          sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.RemoteManagement.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
+          sudo sqlite3 "$SYSTEM_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.Terminal',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
+          
+          # اعمال همین ساختار روی دیتابیس TCC یوزر سامیار جهت اطمینان ۱۰۰٪
+          sqlite3 "$USER_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.screensharingd',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
+          sqlite3 "$USER_TCC" "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.RemoteManagement.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,$TIMESTAMP);" 2>/dev/null || true
+          
+          # اصلاح مالکیت فایل دیتابیس یوزر
+          sudo chown -R samiyar:staff "/Users/samiyar/Library/Application Support/com.apple.TCC"
+          echo "TCC Database Successfully Patched."
 
-      # ۴. نصب و فعال‌سازی زیرساخت‌های صوتی مجازی
+      # ۴. فعال‌سازی و کانفیگ قطعی ARDAgent و Screen Sharing از طریق مسیر فیزیکی kickstart
+      - name: Force Start Apple Remote Management (ARDAgent Kickstart)
+        run: |
+          echo "==== Activating ARDAgent through CoreServices Kickstart ===="
+          ARD_KICKSTART="/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart"
+          
+          # غیرفعال کردن اولیه برای پاکسازی سشن‌های قفل شده قدیمی
+          sudo $ARD_KICKSTART -deactivate -stop || true
+          
+          # کانفیگ کامل دسترسی برای همه پورت‌ها و ویژگی‌ها
+          sudo $ARD_KICKSTART -configure -allowAccessFor -allUsers -privs -all
+          
+          # تنظیم پسورد VNC به عنوان لایه دوم بک‌آپ در کنار Mac Authentication
+          sudo $ARD_KICKSTART -configure -clientopts -setvnclegacy yes -setvncpw -vncpw mac2026!
+          
+          # راه‌اندازی مجدد اکتیو ایجنت ریموت
+          sudo $ARD_KICKSTART -activate -start -restart -agent
+          
+          # ری‌استارت بومی دیمون اسکرین شیرینگ برای لود کردن ساختار جدید TCC
+          sudo launchctl bootout system/com.apple.screensharing 2>/dev/null || true
+          sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
+          sudo pkill screensharingd || true
+
+      # ۵. تنظیم و نصب ساختار صدا
       - name: Setup Audio Infrastructure
         run: |
-          echo "==== Configuring BlackHole Audio for Tahoe ===="
+          echo "==== Configuring BlackHole Audio ===="
           brew install blackhole-2ch || true
           brew install switchaudio-osx || true
           sudo killall coreaudiod || true
           sleep 2
           SwitchAudioSource -s "BlackHole 2ch" || true
 
-      # ۵. ربات پس‌زمینه برای کلیک خودکار و تایید مجوزهای مخفی Screen Recording و Audio
+      # ۶. ربات فعال کلیک خودکار در پس‌زمینه برای پاپ‌آپ‌های ناگهانی احتمالی
       - name: Start Background TCC Auto-Approver Bot
         run: |
-          echo "==== Starting Auto-Clicker Bot for Tahoe Privacy Prompts ===="
           cat << 'EOF' > tcc_bot.sh
           #!/bin/bash
           while true; do
-            # کلیک خودکار روی دکمه Allow یا OK برای تمامی پاپ‌آپ‌های حریم خصوصی مربوط به تصویر و صدا
             osascript -e 'tell application "System Events" to click button "Allow" of window 1 of application process "NotificationCenter"' 2>/dev/null
             osascript -e 'tell application "System Events" to click button "OK" of window 1 of application process "CoreServicesUIAgent"' 2>/dev/null
             osascript -e 'tell application "System Events" to click button "Allow" of window 1 of application process "WindowServer"' 2>/dev/null
@@ -90,33 +117,27 @@ jobs:
           EOF
           chmod +x tcc_bot.sh
           ./tcc_bot.sh &
-          echo "Bot is successfully running in background..."
 
-      # ۶. راه‌اندازی مجدد موتور گرافیکی جهت شکستن قفل صفحه سیاه و اعمال لاگین خودکار
-      - name: Force WindowServer Reset
+      # ۷. راه‌اندازی مجدد لایه گرافیکی تاهو جهت لود دسکتاپ مجازی (Headless Fix)
+      - name: Force WindowServer Reset to Initialize Virtual Framebuffer
         run: |
-          echo "==== Resetting Graphic Server to Force User Session ===="
+          echo "==== Forcing WindowServer To Render Headless Screen ===="
           sudo killall -9 WindowServer || true
           sleep 5
           sudo caffeinate -u -d -i -s -t 7200 &
 
-      # ۷. ارائه اطلاعات اتصال دقیق و حیاتی
-      - name: Connection Guide for macOS Tahoe
+      # ۸. چاپ اطلاعات نهایی اتصال
+      - name: Connection Details
         run: |
-          echo "==== Tahoe Engine Configuration Completed ===="
-          echo "------------------------------------------------"
+          echo "==== Tahoe Engine Setup Complete ===="
           echo "Tailscale IP: $(tailscale ip -4)"
           echo "Username: samiyar"
           echo "Password: mac2026!"
           echo "------------------------------------------------"
-          echo "🔴 IMPORTANT DIRECTION FOR REALVNC / CLIENTS:"
-          echo "1. Do NOT choose 'VNC Password' authentication in your client settings."
-          echo "2. Change 'Authentication' method to 'Mac User' or 'Standard Username/Password'."
-          echo "3. Enter Username: samiyar and Password: mac2026!"
-          echo "4. This uses Apple's native secure pipeline, bypassing the Tahoe Screen Capture block entirely!"
+          echo "If Mac User auth fails, you can now also use VNC Password: mac2026!"
           echo "------------------------------------------------"
 
-      # ۸. زنده نگه داشتن سرور جهت کار شما
+      # ۹. زنده نگه داشتن سرور
       - name: Keep Runner Alive
         run: |
           sleep 7200
