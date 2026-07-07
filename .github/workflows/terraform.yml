@@ -41,19 +41,20 @@ jobs:
         echo "==== [۴] تایید وضعیت اتصال ===="
         tailscale status
 
-    # ۳. فعال‌سازی GUI، محیط صوتی، VNC، تنظیم پسورد یوزر و فعال‌سازی Screen Recording
+    # ۳. فعال‌سازی GUI، ساخت کاربر جدید با sysadminctl، تنظیم VNC و Screen Recording
     - name: Enable macOS GUI, VNC, Audio & Input Control
       run: |
-        echo "==== [۱] تنظیم پسورد برای کاربر سیستم (runner) ===="
-        # تنظیم رمز عبور macosuser123 برای کاربر جاری جهت لاگین در محیط گرافیکی
-        sudo dscl . -passwd /Users/runner macosuser123
+        echo "==== [۱] ساخت یک کاربر ادمین جدید برای دسکتاپ گرافیکی ===="
+        # با استفاده از ابزار سیستمی مک یک کاربر به نام samiyar با دسترسی ادمین و پسورد مشخص می‌سازیم
+        sudo sysadminctl -addUser samiyar -fullName "Samiyar Admin" -password "macosuser123" -admin
         
         echo "==== [۲] تزریق دسترسی Screen Recording و کنترل سیستم به سرویس VNC ===="
-        # اضافه کردن دسترسی ضبط صفحه و مدیریت سیستم به ایجنت‌های گرافیکی اپل در دیتابیس امنیتی TCC
+        # اضافه کردن دسترسی ضبط صفحه و مدیریت سیستم به دیتابیس امنیتی TCC
         sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.apple.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,CAST(strftime('%s','now') AS INTEGER));"
         sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','com.apple.RemoteManagementAgent',0,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,CAST(strftime('%s','now') AS INTEGER));"
         
-        echo "==== [۳] فعال‌سازی اشتراک‌گذاری دسکتاپ و مدیریت از راه دور ===="
+        echo "==== [۳] فعال‌سازی مدیریت از راه دور و اشتراک‌گذاری دسکتاپ با Kickstart ===="
+        # فعال کردن کامل ایجنت مدیریت اپل برای همه کاربران (شامل کاربر جدید)
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate -configure -access -on -restart -agent -privs -all -allowAccessFor -allUsers
         
@@ -65,13 +66,13 @@ jobs:
         sudo nvram SystemAudioVolume=%80 || true
         sudo systemsetup -setsetsystemstartupaudio on || true
         
-        echo "==== [۵] اطلاعات نهایی اتصال ===="
+        echo "==== [۵] اطلاعات جدید و اصلاح‌شده اتصال ===="
         echo "=================================================="
         echo "  آی‌پی مک شما در شبکه Tailscale:"
         tailscale ip -4
-        echo "  رمز اتصال اوليه VNC (در نرم‌افزار): macOSVNC@123"
-        echo "  نام کاربری دسکتاپ مک: runner"
-        echo "  رمز عبور دسکتاپ مک (صفحه لاگین): macosuser123"
+        echo "  رمز اتصال اولیه VNC (در نرم‌افزار): macOSVNC@123"
+        echo "  نام کاربری جدید دسکتاپ مک: samiyar"
+        echo "  رمز عبور جدید دسکتاپ مک (صفحه لاگین): macosuser123"
         echo "=================================================="
 
     # ۴. نصب و تنظیم ترافورم روی مک‌اواس
@@ -80,7 +81,7 @@ jobs:
       with:
         cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-    # ۵. سناریو دوم: ساخت فایل ترافورم نمونه برای جلوگیری از ارور نبود کانفیگ
+    # ۵. سناریو دوم: ساخت فایل ترافورم نمونه
     - name: Create Dummy Terraform File
       run: |
         cat <<EOF > main.tf
