@@ -15,33 +15,30 @@ jobs:
     runs-on: macos-latest
     environment: production
 
+    # تنظیم مسیر پیش‌فرض برای تمام دستورات ترافورم (سناریو اول)
     defaults:
       run:
         shell: bash
+        working-directory: ./terraform  # <--- ترافورم تمام فایل‌های .tf را در این پوشه به دنبالش می‌گردد
 
     steps:
     # ۱. واکشی کدهای مخزن
     - name: Checkout
       uses: actions/checkout@v4
 
-    # ۲. نصب و راه‌اندازی بومی و دستی Tailscale با قابلیت Accept Routes (جایگزین اکشن قدیمی)
+    # ۲. نصب و راه‌اندازی بومی و دستی Tailscale با قابلیت Accept Routes
     - name: Install and Connect Tailscale (Manual Control)
       env:
         TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTHKEY }}
       run: |
         echo "==== [۱] نصب Tailscale روی مک‌اواس ===="
-        # نصب سریع کلاینت تایل‌اسکیل با استفاده از Homebrew
         brew install tailscale
         
         echo "==== [۲] راه‌اندازی ورکر و دیمن Tailscale ===="
-        # سرویس پس‌زمینه تایل‌اسکیل را با دسترسی روت استارت می‌زنیم
         sudo brew services start tailscale
-        
-        # چند ثانیه صبر برای مطمئن شدن از بالا آمدن ساب‌سیستم شبکه
         sleep 5
         
         echo "==== [۳] اتصال به شبکه با کلید اختصاصی و تنظیمات روت ===="
-        # اجرای دستور مد نظر شما همراه با پاس دادن سکرت درون متغیر محیطی
         sudo tailscale up --authkey="$TAILSCALE_AUTH_KEY" --accept-routes
         
         echo "==== [۴] تایید وضعیت اتصال ===="
@@ -51,16 +48,13 @@ jobs:
     - name: Enable macOS GUI, VNC, Audio & Input Control
       run: |
         echo "==== [۱] فعال‌سازی اشتراک‌گذاری دسکتاپ و مدیریت از راه دور ===="
-        # فعال کردن کامل خدمات مدیریت اپل با دسترسی کامل به کیبورد، ماوس و کنترل صفحه
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate -configure -access -on -restart -agent -privs -all -allowAccessFor -allUsers
         
-        # تنظیم رمز عبور دلخواه برای اتصال VNC (به جای macOSVNC@123 رمز امن خود را بگذارید)
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -configure -clientopts -setvncpasswd -vncpasswd macOSVNC@123
         
         echo "==== [۲] راه‌اندازی و باز کردن لایه صوتی سیستم ===="
-        # بالا بردن ولوم صدا و اطمینان از فعال بودن زیرسیستم صوتی در بوت گرافیکی
         sudo nvram SystemAudioVolume=%80 || true
         sudo systemsetup -setsetsystemstartupaudio on || true
         
@@ -77,7 +71,7 @@ jobs:
       with:
         cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-    # ۵. اجرای مراحل استاندارد ترافورم
+    # ۵. اجرای مراحل استاندارد ترافورم (در پوشه ./terraform)
     - name: Terraform Init
       run: terraform init
 
@@ -91,9 +85,9 @@ jobs:
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       run: terraform apply -auto-approve -input=false
 
-    # ۶. زنده نگه داشتن سرور جهت اتصال و کار با محیط گرافیکی مک
+    # ۶. زنده نگه داشتن سرور جهت اتصال و کار با محیط گرافیکی مک (حتی در صورت ارور ترافورم)
     - name: Keep Runner Alive for Remote Desktop Access
-      if: always() # حتی اگر ترافورم با خطا مواجه شد، دسترسی گرافیکی باز بماند تا امکان عیب‌یابی داشته باشید
+      if: always() # این خط تضمین می‌کند در صورت بروز خطا در پلان ترافورم، گیت‌هاب بسته نشود تا شما عیب‌یابی کنید
       run: |
         echo "اتاق کنترل گرافیکی به مدت ۱ ساعت باز است."
         echo "می‌توانید با نرم‌افزار VNC Viewer به آی‌پی اختصاصی مشخص شده در مرحله ۳ متصل شوید..."
