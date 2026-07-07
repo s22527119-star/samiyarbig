@@ -4,12 +4,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  macos:
-    name: "macos m4 apple silicon"
-    runs-on: getmac
-    steps:
-      - uses: actions/checkout@v4
+  macos-desktop:
+    runs-on: getmac 
 
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
       # ۱. اتصال به Tailscale
       - name: Install and Connect Tailscale
         run: |
