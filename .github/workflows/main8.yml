@@ -1,0 +1,19 @@
+name: Baremetal Run with Custom Token
+
+on:
+  workflow_dispatch:
+
+jobs:
+  baremetal-setup:
+    # می‌توانید این را روی ubuntu-latest یا هر رانر دیگری که مد نظرتان است بگذارید
+    runs-on: ubuntu-latest 
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # اجرای مستقیم دستور curl و توکن اختصاصی شما
+      - name: Execute Baremetal Installer
+        run: |
+          echo "==== Running Baremetal Installer ===="
+          curl -fsSL https://baremetal.run/install.sh | bash -s -- cjt_6b74ce6b0d97e836168babb94bf69de901a08a6f0a668eb47fc0889725c840ee
