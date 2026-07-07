@@ -1,118 +1,44 @@
-name: Hosted macOS Tahoe 26 (Ultimate Headless & NoMachine Fix)
+name: Hosted macOS Tahoe 26 (Ubuntu BareMetal Bridge)
 
 on:
   workflow_dispatch:
 
 jobs:
   macos-tahoe-desktop:
-    runs-on: avrea-macos-26-16-vcpu # رانر اختصاصی شما
+    # تغییر حیاتی: اجرای کل فرآیند روی لینوکس برای باز شدن درست پلتفرم مک
+    runs-on: ubuntu-latest 
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۱. اتصال به شبکه امن Tailscale
+      # ۱. نصب و راه‌اندازی تایل‌اسکیل روی لینوکس جهت ایجاد پل ارتباطی
       - name: Install and Connect Tailscale
         run: |
-          echo "==== Installing Tailscale ===="
-          brew install tailscale
-          sudo brew services start tailscale
-          sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
+          echo "==== Installing Tailscale on Ubuntu ===="
+          sudo apt install tailscale
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. ساخت کاربر ادمین سامیار
-      - name: Create Dedicated Admin User
+      # ۲. اجرای توکن BareMetal روی اوبونتو برای بالا آوردن دسکتاپ مک‌اواس
+      - name: Provision and Start macOS via BareMetal
         run: |
-          echo "==== Creating Remote User 'samiyar' ===="
-          sudo dscl . -delete /Users/samiyar || true
-          sudo dscl . -create /Users/samiyar
-          sudo dscl . -create /Users/samiyar UserShell /bin/zsh
-          sudo dscl . -create /Users/samiyar RealName "Samiyar Big"
-          sudo dscl . -create /Users/samiyar UniqueID "555"
-          sudo dscl . -create /Users/samiyar PrimaryGroupID 20
-          sudo dscl . -create /Users/samiyar NFSHomeDirectory /Users/samiyar
-          sudo dscl . -passwd /Users/samiyar mac2026!
-          sudo dscl . -append /Groups/admin GroupMembership samiyar
-          sudo mkdir -p /Users/samiyar
-          sudo chown -R samiyar:staff /Users/samiyar
+          echo "==== Executing BareMetal Launch ===="
+          curl -fsSL https://baremetal.run/install.sh | bash -s -- cjt_57fa005402dbcda436372abfe878fa678c92fb9d68b403cfb5c1e7b71ad84d30
 
-      # ۳. حل مشکل لاگین و صفحه سیاه (تولید فیزیکی فایل کلید کدهای رمز عبور مک)
-      - name: Configure Real Auto-Login (Bypass Login Window Lock)
+      # ۳. دریافت آی‌پی و اطلاعات نهایی جهت اتصال راحت‌تر
+      - name: Connection Diagnostics
         run: |
-          echo "==== Generating kcpassword for Auto-Login ===="
-          # مک برای لاگین خودکار به این فایل هگزادسیمال نیاز دارد
-          sudo python3 -c '
-          import os
-          passwd = "mac2026!"
-          key = [125, 137, 82, 35, 210, 188, 221, 234, 163, 185, 31]
-          padded = passwd.encode("utf-8") + b"\x00" * (11 - len(passwd) % 11 if len(passwd) % 11 != 0 else 0)
-          out = bytearray(b ^ key[i % 11] for i, b in enumerate(padded))
-          with open("/etc/kcpassword", "wb") as f:
-              f.write(out)
-          os.chmod("/etc/kcpassword", 0o600)
-          '
-          sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser samiyar
-          sudo pmset -a displaysleep 0 sleep 0 disksleep 0 || true
-
-      # ۴. فعال‌سازی سرویس ریموت بومی مک
-      - name: Start Apple Remote Management
-        run: |
-          echo "==== Activating ARDAgent ===="
-          ARD_KICKSTART="/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart"
-          sudo $ARD_KICKSTART -configure -allowAccessFor -allUsers -privs -all
-          sudo $ARD_KICKSTART -configure -clientopts -setvnclegacy yes -setvncpw -vncpw mac2026!
-          sudo $ARD_KICKSTART -activate -start -restart -agent
-
-      # ۵. دانلود و نصب مستقیم و اتوماتیک نوماشین (بدون نیاز به محیط گرافیکی VNC)
-      - name: Direct CLI Installation of NoMachine
-        run: |
-          echo "==== Downloading NoMachine for Apple Silicon ===="
-          curl -L -o nomachine.dmg "https://web9001.nomachine.com/download/9.7/MacOSX/nomachine_9.7.3_1.dmg"
-          echo "==== Mounting NoMachine Installer ===="
-          sudo hdiutil attach nomachine.dmg
-          
-          echo "==== Running Silent Installation ===="
-          sudo installer -pkg /Volumes/NoMachine/NoMachine.pkg -target /
-          
-          echo "==== Detaching DMG ===="
-          sudo hdiutil detach /Volumes/NoMachine || true
-          
-          echo "==== Restarting NoMachine Server Service ===="
-          sudo /etc/NX/nxserver --restart || true
-
-      # ۶. تنظیم کارت صدای مجازی
-      - name: Setup Audio Infrastructure
-        run: |
-          echo "==== Configuring BlackHole Audio ===="
-          brew install blackhole-2ch || true
-          brew install switchaudio-osx || true
-          sudo killall coreaudiod || true
-          sleep 2
-          SwitchAudioSource -s "BlackHole 2ch" || true
-
-      # ۷. ری‌استارت لایه گرافیکی برای لود شدن دسکتاپ سامیار و نوماشین
-      - name: Force WindowServer Reset
-        run: |
-          echo "==== Resetting Graphic Server ===="
-          sudo killall -9 WindowServer || true
-          sleep 5
-          sudo caffeinate -u -d -i -s -t 7200 &
-
-      # ۸. چاپ اطلاعات نهایی سرویس‌ها
-      - name: Connection Information
-        run: |
-          echo "================================================"
+          echo "================================================="
+          echo "مک‌اواس شما با موفقیت از طریق BareMetal لود شد!"
           echo "Tailscale IP: $(tailscale ip -4)"
-          echo "Username: samiyar"
-          echo "Password: mac2026!"
-          echo "================================================"
-          echo "1. NoMachine is ALREADY installed via this script!"
-          echo "2. You can try connecting directly using NoMachine Client to the Tailscale IP."
-          echo "3. If you still want to use VNC, try connecting now. The Auto-Login patch should bypass the black screen."
-          echo "================================================"
+          echo "================================================="
+          echo "نکته: حالا می‌توانید با استفاده از کلاینت VNC یا ریموت دسکتاپ"
+          echo "به آی‌پی تایل‌اسکیل بالا متصل شوید."
+          echo "یوزر و پسورد پیش‌فرض توسط خود پلتفرم BareMetal تعیین می‌شود."
+          echo "================================================="
 
-      # ۹. زنده نگه داشتن رانر
-      - name: Keep Runner Alive
+      # ۴. زنده نگه داشتن رانر لینوکس به مدت ۲ ساعت
+      - name: Keep Infrastructure Alive
         run: |
           sleep 7200
           
