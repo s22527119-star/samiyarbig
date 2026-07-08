@@ -5,7 +5,7 @@ on:
 
 jobs:
   macos-desktop:
-    runs-on: namespace-profile-samiyarbig # رانر اختصاصی شما
+    runs-on: flyci-macos-m3-large # رانر اختصاصی شما
 
     steps:
       - name: Checkout Repository
