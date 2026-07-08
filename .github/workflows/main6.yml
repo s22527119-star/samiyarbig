@@ -4,11 +4,15 @@ on:
   workflow_dispatch:
 
 jobs:
-  macos-desktop:
-    runs-on: flyci-macos-m3-large # رانر اختصاصی شما
-
+  build:
+    name: Build my code
+    runs-on: macos-latest-xlarge  # نکته: اگر از رانر اختصاصی خود FlyCI استفاده می‌کنید، می‌توانید این خط را به flyci-macos-m3-large تغییر دهید.
+    permissions:
+      id-token: write
+      contents: read
+      
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository code to Host
         uses: actions/checkout@v4
 
       # ۱. اتصال به شبکه امن Tailscale
@@ -46,7 +50,7 @@ jobs:
           # جلوگیری از به خواب رفتن گرافیک و سیستم
           sudo pmset -a displaysleep 0 sleep 0 disksleep 0 || true
 
-      # ۳. فعال‌سازی ریموت دسکتاپ بومی اپل (VNC) با دستورات تصحیح‌شده مک ۲۶ Tahoe
+      # ۳. فعال‌سازی ریموت دسکتاپ بومی اپل (VNC) با دستورات تصحیح‌شده
       - name: Enable Native Apple Remote Desktop & VNC
         run: |
           echo "==== Activating Apple Remote Management ===="
@@ -102,8 +106,14 @@ jobs:
           echo "4. Once inside the macOS GUI, open Safari, go to NoMachine's website, download and install it manually!"
           echo "------------------------------------------------"
 
-      # ۷. زنده نگه داشتن رانر جهت کار شما
+      # ۷. زنده نگه داشتن رانر جهت کار شما (۲ ساعت)
       - name: Keep Runner Alive
         run: |
           echo "==== Runner is alive and waiting for your VNC connection ===="
           sleep 7200
+
+      # ۸. عیب‌یابی و اصلاح خودکار بیلد در صورت بروز خطا توسط FlyCI Wingman
+      - name: Fix my build
+        uses: fly-ci/wingman-action@v1
+        if: failure()
+        
