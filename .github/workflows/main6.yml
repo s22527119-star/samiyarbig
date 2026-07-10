@@ -1,18 +1,19 @@
-name: Hosted macOS 16vCPU (Native VNC for Manual Setup)
+name: Hosted macOS Intel (Nested Virt & Native VNC)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build my code
-    runs-on: macos-26-intel  # نکته: اگر از رانر اختصاصی خود FlyCI استفاده می‌کنید، می‌توانید این خط را به flyci-macos-m3-large تغییر دهید.
+    name: Build on Intel macOS
+    # تغییر حیاتی: استفاده از تنها رانر معتبر اینتل در گیت‌هاب اکشنز
+    runs-on: macos-26-intel
     permissions:
       id-token: write
       contents: read
       
     steps:
-      - name: Checkout repository code to Host
+      - name: Checkout repository code
         uses: actions/checkout@v4
 
       # ۱. اتصال به شبکه امن Tailscale
@@ -24,7 +25,7 @@ jobs:
           sudo ln -s /opt/homebrew/bin/tailscale /usr/local/bin/tailscale || true
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes
 
-      # ۲. ساخت یک کاربر ادمین جدید به نام samiyar (برای لاگین در محیط گرافیکی)
+      # ۲. ساخت کاربر ادمین سامینار
       - name: Create Dedicated Admin User
         run: |
           echo "==== Creating Remote User 'samiyar' ===="
@@ -37,40 +38,33 @@ jobs:
           sudo dscl . -create /Users/samiyar PrimaryGroupID 20
           sudo dscl . -create /Users/samiyar NFSHomeDirectory /Users/samiyar
           
-          # ست کردن رمز عبور ثابت
           sudo dscl . -passwd /Users/samiyar mac2026!
-          
-          # ارتقا به سطح دسترسی ادمین
           sudo dscl . -append /Groups/admin GroupMembership samiyar
           
-          # ساخت دایرکتوری خانگی
           sudo mkdir -p /Users/samiyar
           sudo chown -R samiyar:staff /Users/samiyar
           
-          # جلوگیری از به خواب رفتن گرافیک و سیستم
           sudo pmset -a displaysleep 0 sleep 0 disksleep 0 || true
 
-      # ۳. فعال‌سازی ریموت دسکتاپ بومی اپل (VNC) با دستورات تصحیح‌شده
+      # ۳. فعال‌سازی ریموت دسکتاپ بومی روی مک‌اواس اینتل (Ventura)
       - name: Enable Native Apple Remote Desktop & VNC
         run: |
           echo "==== Activating Apple Remote Management ===="
           
-          # فعال‌سازی دیمون ریموت دسکتاپ
+          # این مسیر در اینتل و ARM کاملا یکسان است
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
           
-          # تنظیم دسترسی کامل برای همه کاربران ادمین
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure -allowAccessFor -allUsers -privs -all
           
-          # ست کردن پسورد VNC با آرگومان‌های بومی و بدون ارور
+          # فعال‌سازی لایه قدیمی VNC مخصوص ارتباط کلاینت‌ها
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -configure -clientopts -setvnclegacy yes -setvncpw yes -vncpw mac2026!
+            -configure -clientopts -setvnclegacy yes -setvncpw -vncpw mac2026!
           
-          # ری‌استارت نهایی سرویس گرافیکی ریموت
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
 
-      # ۴. نصب ابزارهای مدیریت و انتقال صدا
-      - name: Install Audio Utilities via Homebrew
+      # ۴. نصب ابزارهای صدا
+      - name: Install Audio Utilities
         run: |
           echo "==== Installing Audio Tools ===="
           brew install blackhole-2ch || true
@@ -78,42 +72,30 @@ jobs:
           
           sudo killall coreaudiod || true
           sleep 3
-          
-          # مسیردهی خروجی صدا به کارت صدای مجازی برای ضبط
           SwitchAudioSource -s "BlackHole 2ch" || true
 
-      # ۵. زنده نگه داشتن فریم‌بافر دسکتاپ (جلوگیری از سیاه شدن مانیتور مجازی)
+      # ۵. زنده نگه داشتن فریم‌بافر دسکتاپ
       - name: Keep Video Framebuffer Alive
         run: |
           echo "==== Preventing macOS Graphics from Sleeping ===="
           sudo caffeinate -u -d -i -s -t 7200 &
           sleep 2
 
-      # ۶. نمایش اطلاعات ورود مستقیم
+      # ۶. نمایش اطلاعات اتصال
       - name: Get Connection Details
         run: |
           echo "==== Ready for Manual Setup via VNC ===="
           echo "------------------------------------------------"
+          echo "Architecture: Intel x86_64 (Nested Virtualization Supported)"
           echo "Tailscale IP: $(tailscale ip -4)"
           echo "Username: samiyar"
           echo "Password: mac2026!"
           echo "VNC Password: mac2026!"
           echo "------------------------------------------------"
-          echo "HOW TO CONNECT AND INSTALL:"
-          echo "1. Open your VNC Viewer (like RealVNC or TightVNC) on your local system."
-          echo "2. Connect to -> TAILSCALE_IP:5900"
-          echo "3. Enter VNC Password: mac2026!"
-          echo "4. Once inside the macOS GUI, open Safari, go to NoMachine's website, download and install it manually!"
-          echo "------------------------------------------------"
 
-      # ۷. زنده نگه داشتن رانر جهت کار شما (۲ ساعت)
+      # ۷. نگه داشتن رانر
       - name: Keep Runner Alive
         run: |
-          echo "==== Runner is alive and waiting for your VNC connection ===="
+          echo "==== Runner is alive for 2 hours ===="
           sleep 7200
-
-      # ۸. عیب‌یابی و اصلاح خودکار بیلد در صورت بروز خطا توسط FlyCI Wingman
-      - name: Fix my build
-        uses: fly-ci/wingman-action@v1
-        if: failure()
-        
+          
