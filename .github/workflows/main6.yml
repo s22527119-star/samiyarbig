@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     name: Build my code
-    runs-on: macos-15-intel  # نکته: اگر از رانر اختصاصی خود FlyCI استفاده می‌کنید، می‌توانید این خط را به flyci-macos-m3-large تغییر دهید.
+    runs-on: macos-26-intel  # نکته: اگر از رانر اختصاصی خود FlyCI استفاده می‌کنید، می‌توانید این خط را به flyci-macos-m3-large تغییر دهید.
     permissions:
       id-token: write
       contents: read
